@@ -17,7 +17,6 @@ class DataLoader():
     def __init__(self, base_dirpath):
         # I/O
         self.base_dirpath = base_dirpath
-        self.model_dirpath = os.path.join(base_dirpath, 'models')
         self.test_fraction = 0.1
         self.tagged_doc = None
         self.data = None
@@ -28,9 +27,9 @@ class DataLoader():
 
     def build_tagged_docs(self, text_colname, labels_colname):
         alldocs = []
-        for words, tags in zip(self.data[text_colname], self.data[labels_colname]):
+        for line, tags in zip(self.data[text_colname], self.data[labels_colname]):
             tokens = gensim.utils.to_unicode(line).split()
-            alldocs.append(TaggedDocument(words, tags))
+            alldocs.append(TaggedDocument(tokens, tags))
 
         doc_list = alldocs[:]  
         shuffle(doc_list)
@@ -44,6 +43,7 @@ class ModelTrainer():
         self.cores = cores
         self.models = []
         self.data_loader = data_loader
+        self.model_dirpath = os.path.join(data_loader.base_dirpath, 'models')
         pass
 
     def build_models(self):
@@ -51,14 +51,14 @@ class ModelTrainer():
         self.models = [
             # PV-DBOW plain
             Doc2Vec(dm=0, vector_size=100, negative=5, hs=0, min_count=2, sample=0, 
-                    epochs=20, workers=cores, comment='PV-DBOW_d100n5mc2t20'),
+                    epochs=20, workers=self.cores, comment='PV-DBOW_d100n5mc2t20'),
             # PV-DM w/ default averaging; a higher starting alpha may improve CBOW/PV-DM modes
             Doc2Vec(dm=1, vector_size=100, window=10, negative=5, hs=0, min_count=2, sample=0, 
-                    epochs=20, workers=cores, alpha=0.05, comment='PV-DM_d100w10n5mc2t20alpha0.05'),
+                    epochs=20, workers=self.cores, alpha=0.05, comment='PV-DM_d100w10n5mc2t20alpha0.05'),
             # PV-DM w/ concatenation - big, slow, experimental mode
             # window=5 (both sides) approximates paper's apparent 10-word total window size
             Doc2Vec(dm=1, dm_concat=1, vector_size=100, window=5, negative=5, hs=0, min_count=2, sample=0, 
-                    epochs=20, workers=cores, comment='PV-DM_concatd100w5n5mc2t20'),
+                    epochs=20, workers=self.cores, comment='PV-DM_concatd100w5n5mc2t20'),
         ]
 
         for model in self.models:
@@ -69,11 +69,9 @@ class ModelTrainer():
         for model in self.models: 
             print("Training %s" % model)
             model.train(self.data_loader.tagged_doc, total_examples=len(self.data_loader.tagged_doc), epochs=model.epochs) # Adjust epochs in model spec
-            print()
 
             print("Saving %s" % model)
-            pdb.set_trace()
-            model.save(os.path.join(model_dirpath, model.comment))
+            model.save(os.path.join(self.model_dirpath, f"{model.comment}.model"))
 
 def main():
     base_dirpath = '/usr2/mamille2/fanfiction-project'
