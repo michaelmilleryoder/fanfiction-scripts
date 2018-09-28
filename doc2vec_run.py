@@ -8,12 +8,13 @@ from collections import OrderedDict
 import multiprocessing
 import os
 import pdb
+import pandas as pd
 
 """ Train doc2vec to build vectors for various metadata labels. Save models """
 
 class DataLoader():
 
-    def __init_(self, base_dirpath):
+    def __init__(self, base_dirpath):
         # I/O
         self.base_dirpath = base_dirpath
         self.model_dirpath = os.path.join(base_dirpath, 'models')
@@ -22,12 +23,12 @@ class DataLoader():
         self.data = None
 
     def load_data(self, data_fpath):
-        self.data_fpath = os.path.join(base_dirpath, data_fpath)
+        self.data_fpath = os.path.join(self.base_dirpath, data_fpath)
         self.data = pd.read_pickle(self.data_fpath)
 
     def build_tagged_docs(self, text_colname, labels_colname):
         alldocs = []
-        for line, tags in zip(self.data[text_colname], self.data[labels_colname]):
+        for words, tags in zip(self.data[text_colname], self.data[labels_colname]):
             tokens = gensim.utils.to_unicode(line).split()
             alldocs.append(TaggedDocument(words, tags))
 
@@ -39,7 +40,7 @@ class DataLoader():
 
 class ModelTrainer():
 
-    def __init_(self, data_loader, cores=20):
+    def __init__(self, data_loader, cores=20):
         self.cores = cores
         self.models = []
         self.data_loader = data_loader
