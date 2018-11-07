@@ -9,7 +9,8 @@ fandoms = [
     #'academia',
 #    'allmarvel',
 #    'detroit',
-    'friends',
+    #'friends',
+    'supernatural',
 ]
 
 data_dirpath_template = '/usr2/scratch/fanfic/ao3_{}_text/stories'
