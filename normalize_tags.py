@@ -86,7 +86,8 @@ def normalize_tags(metadata, metatags, fandom_dirpath):
 
 def main():
 
-    fandom = 'song_ice_fire'
+    #fandom = 'song_ice_fire'
+    fandom = 'harrypotter'
     fandom_dirpath = f'/usr2/mamille2/fanfiction-project/data/ao3/{fandom}/'
 
     # See if already normalized
