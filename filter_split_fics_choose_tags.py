@@ -136,7 +136,7 @@ def split(metadata, tag_colname, tag_vocab, out_dirpath):
 
     #for fold in ['train', 'dev', 'test']:
         #metadata_split[fold] = metadata[metadata['fic_id'].isin(fic_ids[fold])].copy()
-    print(f'Number of words in training set: {metadata_split["train"]["words"].sum()}')
+    #print(f'Number of words in training set: {metadata_split["train"]["words"].sum()}')
 
     # Ensure all tags are present in all folds at least once
     for fold in ['train', 'dev', 'test']:
@@ -273,12 +273,13 @@ def main():
     # Save dataset parameters, info
     with open(os.path.join(out_dirpath, 'info.txt'), 'w') as f:
         f.write(f'Lower word limit: {lower_word_limit}\n')
-        f.write(f'Upper word limit: {lower_word_limit}\n')
+        f.write(f'Upper word limit: {upper_word_limit}\n')
         f.write(f'Selected tags: {tag_search}\n')
         f.write(f'Positive class proportion: {positive_class_proportion}\n')
         f.write(f'Total fics: {len(metadata)}\n')
         for fold in ['train', 'dev', 'test']:
             f.write(f'{fold} set: {len(metadata_split[fold])} fics\n')
+        f.write(f'Number of words in training set: {metadata_split["train"]["words"].sum()}')
 
 
 if __name__ == '__main__':

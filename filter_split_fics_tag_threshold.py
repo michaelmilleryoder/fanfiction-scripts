@@ -9,6 +9,8 @@ import argparse
 import urllib.request
 import urllib.parse
 from bs4 import BeautifulSoup
+from urllib.error import HTTPError
+import re
 
 """ Filter fics, make a train/dev/test split 
     Save out train/dev/test fic_ids, metadata and text
@@ -28,16 +30,27 @@ def build_normalization_dict(metadata, input_tag_colname, out_dirpath):
 
         orig_tag = tag
         
+        #tag = re.sub(r'[/\.]', '*d*', tag)
+        tag = tag.replace('/', '*s*').replace('.', '*d*')
         url = url_base.format(urllib.parse.quote(tag, safe=''))
-        page = str(urllib.request.urlopen(url).read())
+        try:
+            page = str(urllib.request.urlopen(url).read().decode('utf-8'))
+        except HTTPError as e:
+            continue
         
         if '<h3 class="heading">Mergers</h3>' in page: # has been merged
             soup = BeautifulSoup(page, 'html.parser') 
             canonical_tag = soup.find('div', {'class': 'merger module'}).p.a.text
             
             tag = canonical_tag # check if canonical tag has meta tag
+            tag = tag.replace('/', '*s*').replace('.', '*d*')
             url = url_base.format(urllib.parse.quote(tag, safe=''))
-            page = str(urllib.request.urlopen(url).read())
+            try:
+                page = str(urllib.request.urlopen(url).read().decode('utf-8'))
+            except HTTPError as e:
+                print(tag)
+                print(url)
+                pdb.set_trace()
             
         if 'Meta tags:' in page:
             soup = BeautifulSoup(page, 'html.parser') 
@@ -63,7 +76,7 @@ def build_normalization_dict(metadata, input_tag_colname, out_dirpath):
 
 
 def normalize_tags(metadata, metatags, input_tag_colname, normalized_tag_colname, tag_threshold):
-    metadata[normalized_tag_colname] = metadata[input_tag_colname].map(lambda x: [t for l in [metatags[tag] for tag in eval(x) if isinstance(x, str)] for t in l])
+    metadata[normalized_tag_colname] = metadata[input_tag_colname].map(lambda x: [t for l in [metatags[tag] for tag in eval(x) if isinstance(x, str) and tag in metatags] for t in l])
 
     return metadata
 
@@ -170,7 +183,7 @@ def main():
 
     # Settings
     fandom = args.fandom #'song_ice_fire',
-    dataset_name = args.dataset_name #'song_ice_fire',
+    dataset_name = args.dataset_name
     tag_threshold = int(args.tag_threshold)
     #tag_search = [r'AU', r'(A|a)lternate (U|u)niverse', r'(C|c)anon divergen']
     #tag_replacement = 'AU'
@@ -179,7 +192,7 @@ def main():
     input_tag_colname = 'additional tags'
     normalized_tag_colname = 'normalized_tags'
     overwrite_tag_normalization_dict = True
-    normalize = False
+    normalize = True
     if normalize:
         top_tag_colname = f'top{tag_threshold}_normalized_tags'
     else:
@@ -244,7 +257,7 @@ def main():
     # Save dataset parameters, info
     with open(os.path.join(out_dirpath, 'info.txt'), 'w') as f:
         f.write(f'Lower word limit: {lower_word_limit}\n')
-        f.write(f'Upper word limit: {lower_word_limit}\n')
+        f.write(f'Upper word limit: {upper_word_limit}\n')
         f.write(f'Tag threshold: {tag_threshold}\n')
         f.write(f'Total fics: {len(fic_ids["all"])}\n')
         for fold in ['train', 'dev', 'test']:
