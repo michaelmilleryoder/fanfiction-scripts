@@ -71,11 +71,34 @@ def normalize_tags(metadata, metatags, input_tag_colname, normalized_tag_colname
     return metadata
 
 
-def initial_filter(metadata, lower_word_limit, upper_word_limit):
+def initial_filter(metadata, lower_word_limit, upper_word_limit, fandom_dirpath, save=False):
     filtered_metadata = metadata[(metadata['words'] >= lower_word_limit) & \
                 (metadata['words'] <= upper_word_limit) & \
                 (metadata['language'] == 'English') & \
                 (metadata['additional tags'].map(lambda x: len(x) > 2))]
+
+    # Check for any empty fics
+    for fic_id in filtered_metadata['fic_id']:
+        fname = f"{fic_id}.txt"
+
+        text_fpath = os.path.join(fandom_dirpath, f'fics_sents', fname)
+        if os.stat(text_fpath).st_size == 0:
+            filtered_metadata = filtered_metadata[filtered_metadata['fic_id'] != fic_id]
+
+    if save:
+        print("Saving initial filter fics...")
+        for tokenization in ['sent', 'para']:
+            fold_out_dirpath = os.path.join(fandom_dirpath, f'filtered_{tokenization}s')
+            if not os.path.exists(fold_out_dirpath):
+                os.mkdir(fold_out_dirpath)
+
+            for fic_id in filtered_metadata['fic_id']:
+                if tokenization == 'para':
+                    fname = f"{fic_id}_tokenized_paras.txt"
+                else:
+                    fname = f"{fic_id}.txt"
+
+                shutil.copy(os.path.join(fandom_dirpath, f'fics_{tokenization}s', fname), os.path.join(fold_out_dirpath, f"{fic_id}.txt"))
 
     return filtered_metadata
 
@@ -101,17 +124,23 @@ def get_selected_tags(metadata, input_tag_colname, tag_search, out_dirpath):
     return selected_tags, metadata
 
 
-def tag_filter(metadata, input_tag_colname, selected_tag_colname, tag_vocab, tag_replacement):
+def replace_tags(tags, tag_replacements):
+
+    replacements = set()
+
+    for tag in tags:
+        for p in tag_replacements:
+            if re.search(p, tag):
+                replacements.add(tag_replacements[p])
+
+    return list(replacements)
+
+
+def select_tags(metadata, input_tag_colname, selected_tag_colname, tag_replacements):
     """ Assumes input tag colname contains lists """
 
     # New column in metadata
-    metadata[selected_tag_colname] = metadata[input_tag_colname].map(lambda x: [tag for tag in x if tag in tag_vocab])
-
-    # Transform column
-    metadata[selected_tag_colname] = metadata[selected_tag_colname].map(lambda x: [tag_replacement] if len(x) > 0 else [])
-
-    # Filter
-    #metadata = metadata[metadata[filtered_tag_colname].map(lambda x: len(x) > 0)]
+    metadata[selected_tag_colname] = [replace_tags(tags, tag_replacements) for tags in metadata[input_tag_colname].values.tolist()]
 
     return metadata
 
@@ -131,8 +160,11 @@ def split(metadata, tag_colname, tag_vocab, out_dirpath):
     # Split metadata
     metadata_split = {}
 
-    metadata_split['train'], metadata_split['test'] = train_test_split(metadata, test_size=0.1, stratify=metadata[tag_colname])
-    metadata_split['train'], metadata_split['dev'] = train_test_split(metadata_split['train'], test_size=1/9, stratify=metadata_split['train'][tag_colname])
+    #metadata_split['train'], metadata_split['test'] = train_test_split(metadata, test_size=0.1, stratify=metadata[tag_colname])
+    #metadata_split['train'], metadata_split['dev'] = train_test_split(metadata_split['train'], test_size=1/9, stratify=metadata_split['train'][tag_colname])
+
+    metadata_split['train'], metadata_split['test'] = train_test_split(metadata, test_size=0.1, random_state=9)
+    metadata_split['train'], metadata_split['dev'] = train_test_split(metadata_split['train'], test_size=1/9, random_state=9)
 
     #for fold in ['train', 'dev', 'test']:
         #metadata_split[fold] = metadata[metadata['fic_id'].isin(fic_ids[fold])].copy()
@@ -145,7 +177,7 @@ def split(metadata, tag_colname, tag_vocab, out_dirpath):
         for tag in tag_vocab:
             assert tag in fold_tags
             tag_proportion = sum(metadata_split[fold][tag_colname].map(lambda x: tag in x))/len(metadata_split[fold])
-            print(f"{fold} pos examples of {tag}: {tag_proportion}")
+            #print(f"{fold} pos examples of {tag}: {tag_proportion}")
 
     # Save out fic ids
     fic_ids = {}
@@ -178,13 +210,22 @@ def copy_fics(fic_ids, fandom_dirpath, out_dirpath):
 
                 shutil.copy(os.path.join(fandom_dirpath, f'fics_{tokenization}s', fname), os.path.join(fold_out_dirpath, f"{fic_id}.txt"))
 
-def sample_negatives(metadata, selected_tag_colname, positive_class_proportion):
+def sample_negatives(metadata, selected_tag_colname, sampling_strategy):
 
     positives = metadata[metadata[selected_tag_colname].map(lambda x: len(x) > 0)]
 
     negatives = metadata[metadata[selected_tag_colname].map(lambda x: len(x) == 0)]
 
-    sampled_negatives = negatives.sample(n=len(positives), random_state=9)
+
+    if sampling_strategy == 'average':
+        n_possible_values = len(set([t for l in metadata[selected_tag_colname] for t in l]))        
+
+        n_negative_samples = int(len(positives)/n_possible_values)
+
+    else: # equal strategy
+        n_negative_samples = len(positives)
+
+    sampled_negatives = negatives.sample(n=n_negative_samples, random_state=9)
 
     sampled = metadata.loc[positives.index.append(sampled_negatives.index)].copy()
 
@@ -201,12 +242,15 @@ def main():
     # Settings
     fandom = args.fandom #'song_ice_fire',
     dataset_name = args.dataset_name #'song_ice_fire',
-    tag_search = [r'AU', r'(A|a)lternate (U|u)niverse', r'(C|c)anon divergen']
-    tag_replacement = 'AU'
-    positive_class_proportion = .5
+    #tag_search = [r'AU', r'(A|a)lternate (U|u)niverse', r'(C|c)anon divergen']
+    tag_search = [r'Fluff', r'Angst', r'Romance',
+                    r'Humor', r'Hurt/Comfort']
+    tag_replacements = {re.compile(t, re.IGNORECASE): t for t in tag_search}
+    negative_sampling_strategy = 'average'
     upper_word_limit = 5000
     lower_word_limit = 1000
     input_tag_colname = 'additional tags'
+    save_initial_filter = True
     normalized_tag_colname = 'normalized_tags'
     overwrite_tag_normalization_dict = True
     normalize = False
@@ -235,7 +279,8 @@ def main():
         metadata[input_tag_colname] = metadata[input_tag_colname].map(lambda x: eval(x))
 
     # Filter
-    metadata = initial_filter(metadata, lower_word_limit, upper_word_limit)
+    metadata = initial_filter(metadata, lower_word_limit, upper_word_limit, fandom_dirpath, save_initial_filter)
+    pdb.set_trace()
 
     # Normalize tags
     if normalize: 
@@ -253,21 +298,19 @@ def main():
 
         input_tag_colname = normalized_tag_colname
 
-    # Calculate tags
-    tag_vocab, metadata = get_selected_tags(metadata, input_tag_colname, tag_search, out_dirpath)
-
     # add selected tags column
-    metadata = tag_filter(metadata, input_tag_colname, selected_tag_colname, tag_vocab, tag_replacement)
+    metadata = select_tags(metadata, input_tag_colname, selected_tag_colname, tag_replacements)
 
     # Enforce positive class proportion
-    metadata = sample_negatives(metadata, selected_tag_colname, positive_class_proportion)
+    metadata = sample_negatives(metadata, selected_tag_colname, negative_sampling_strategy)
 
     # Shuffle and split
-    metadata_split, fic_ids = split(metadata, selected_tag_colname, [tag_replacement], out_dirpath)
+    metadata_split, fic_ids = split(metadata, selected_tag_colname, tag_replacements.values(), out_dirpath)
     for fold in ['train', 'dev', 'test']:
         print(f'{fold} set: {len(metadata_split[fold])} fics')
 
     # Copy fics
+    print("Copying fics...")
     copy_fics(fic_ids, fandom_dirpath, out_dirpath)
 
     # Save dataset parameters, info
@@ -275,7 +318,7 @@ def main():
         f.write(f'Lower word limit: {lower_word_limit}\n')
         f.write(f'Upper word limit: {upper_word_limit}\n')
         f.write(f'Selected tags: {tag_search}\n')
-        f.write(f'Positive class proportion: {positive_class_proportion}\n')
+        f.write(f'Negative sampling strategy: {negative_sampling_strategy}\n')
         f.write(f'Total fics: {len(metadata)}\n')
         for fold in ['train', 'dev', 'test']:
             f.write(f'{fold} set: {len(metadata_split[fold])} fics\n')

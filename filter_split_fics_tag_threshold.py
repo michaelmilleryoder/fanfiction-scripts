@@ -11,12 +11,15 @@ import urllib.parse
 from bs4 import BeautifulSoup
 from urllib.error import HTTPError
 import re
+import pickle
+import time
 
 """ Filter fics, make a train/dev/test split 
     Save out train/dev/test fic_ids, metadata and text
 """
 
 def build_normalization_dict(metadata, input_tag_colname, out_dirpath):
+    normalization_dict_fpath = os.path.join(out_dirpath, 'tag_normalization.pkl')
 
     # Get all tags
     tags = sorted(set([t for l in metadata[input_tag_colname].values.tolist() for t in l]))
@@ -38,6 +41,7 @@ def build_normalization_dict(metadata, input_tag_colname, out_dirpath):
         except HTTPError as e:
             continue
         
+        time.sleep(1)
         if '<h3 class="heading">Mergers</h3>' in page: # has been merged
             soup = BeautifulSoup(page, 'html.parser') 
             canonical_tag = soup.find('div', {'class': 'merger module'}).p.a.text
@@ -72,6 +76,7 @@ def build_normalization_dict(metadata, input_tag_colname, out_dirpath):
     with open(normalization_dict_fpath, 'wb') as f:
         pickle.dump(metatags, f)
 
+    pdb.set_trace()
     return metatags
 
 
@@ -204,7 +209,6 @@ def main():
     out_dirpath = os.path.join(fandom_dirpath, dataset_name)
     if not os.path.exists(out_dirpath):
         os.mkdir(out_dirpath)
-    normalization_dict_fpath = os.path.join(out_dirpath, 'tag_normalization.pkl')
 
     # Load metadata
     metadata = pd.read_csv(metadata_fpath)
@@ -220,6 +224,7 @@ def main():
     metadata = initial_filter(metadata, lower_word_limit, upper_word_limit)
 
     # Normalize tags
+    normalization_dict_fpath = os.path.join(out_dirpath, 'tag_normalization.pkl')
     if normalize: 
         if not os.path.exists(normalization_dict_fpath) or overwrite_tag_normalization_dict:
             print("Building normalization dictionary...")
@@ -231,7 +236,7 @@ def main():
                 metatags = pickle.load(f)
 
         print("Normalizing tags...")
-        metadata = normalize_tags(metadata, input_tag_colname, normalized_tag_colname, metatags, tag_threshold)
+        metadata = normalize_tags(metadata, metatags, input_tag_colname, normalized_tag_colname, tag_threshold)
 
         input_tag_colname = normalized_tag_colname
 
