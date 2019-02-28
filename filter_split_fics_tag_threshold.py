@@ -54,7 +54,6 @@ def build_normalization_dict(metadata, input_tag_colname, out_dirpath):
             except HTTPError as e:
                 print(tag)
                 print(url)
-                pdb.set_trace()
             
         if 'Meta tags:' in page:
             soup = BeautifulSoup(page, 'html.parser') 
@@ -76,7 +75,6 @@ def build_normalization_dict(metadata, input_tag_colname, out_dirpath):
     with open(normalization_dict_fpath, 'wb') as f:
         pickle.dump(metatags, f)
 
-    pdb.set_trace()
     return metatags
 
 
