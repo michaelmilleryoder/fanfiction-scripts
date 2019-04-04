@@ -240,17 +240,18 @@ def main():
     args = parser.parse_args()
 
     # Settings
-    fandom = args.fandom #'song_ice_fire',
-    dataset_name = args.dataset_name #'song_ice_fire',
+    fandom = args.fandom
+    dataset_name = args.dataset_name
     #tag_search = [r'AU', r'(A|a)lternate (U|u)niverse', r'(C|c)anon divergen']
-    tag_search = [r'Fluff', r'Angst', r'Romance',
-                    r'Humor', r'Hurt/Comfort']
+    #tag_search = [r'Fluff', r'Angst', r'Romance',
+    #                r'Humor', r'Hurt/Comfort']
+    tag_search = [r'(D|d)raco']
     tag_replacements = {re.compile(t, re.IGNORECASE): t for t in tag_search}
     negative_sampling_strategy = 'average'
     upper_word_limit = 5000
     lower_word_limit = 1000
     input_tag_colname = 'additional tags'
-    save_initial_filter = True
+    save_initial_filter = False
     normalized_tag_colname = 'normalized_tags'
     overwrite_tag_normalization_dict = True
     normalize = False
@@ -280,7 +281,6 @@ def main():
 
     # Filter
     metadata = initial_filter(metadata, lower_word_limit, upper_word_limit, fandom_dirpath, save_initial_filter)
-    pdb.set_trace()
 
     # Normalize tags
     if normalize: 
