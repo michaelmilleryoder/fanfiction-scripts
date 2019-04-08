@@ -13,8 +13,8 @@ import re
 from sklearn.model_selection import train_test_split
 import pdb
 
-""" Filter fics, make a train/dev/test split 
-    Save out train/dev/test fic_ids, metadata and text
+""" Filter fics
+    Save out filtered fic_ids, metadata and text
 """
 
 def build_normalization_dict(metadata, input_tag_colname, out_dirpath):
@@ -71,13 +71,13 @@ def normalize_tags(metadata, metatags, input_tag_colname, normalized_tag_colname
     return metadata
 
 
-def initial_filter(metadata, lower_word_limit, upper_word_limit, fandom_dirpath, save=False):
+def initial_filter(metadata, lower_word_limit, upper_word_limit, fandom_dirpath):
 
-    pdb.set_trace()
     filtered_metadata = metadata[(metadata['words'] >= lower_word_limit) & \
                 (metadata['words'] <= upper_word_limit) & \
-                (metadata['language'] == 'English') & \
-                (metadata['additional tags'].map(lambda x: len(x) > 2))]
+                (metadata['language'] == 'English')
+                #(metadata['additional tags'].map(lambda x: len(x) > 0))
+    ]
 
     # Check for any empty fics
     for fic_id in filtered_metadata['fic_id']:
@@ -87,22 +87,20 @@ def initial_filter(metadata, lower_word_limit, upper_word_limit, fandom_dirpath,
         if os.stat(text_fpath).st_size == 0:
             filtered_metadata = filtered_metadata[filtered_metadata['fic_id'] != fic_id]
 
-    if save:
-        print("Saving initial filter fics...")
-        for tokenization in ['sent', 'para']:
-            fold_out_dirpath = os.path.join(fandom_dirpath, f'filtered_{tokenization}s')
-            if not os.path.exists(fold_out_dirpath):
-                os.mkdir(fold_out_dirpath)
+#        for tokenization in ['sent', 'para']:
+#            fold_out_dirpath = os.path.join(fandom_dirpath, f'filtered_{tokenization}s')
+#            if not os.path.exists(fold_out_dirpath):
+#                os.mkdir(fold_out_dirpath)
+#
+#            for fic_id in filtered_metadata['fic_id']:
+#                if tokenization == 'para':
+#                    fname = f"{fic_id}_tokenized_paras.txt"
+#                else:
+#                    fname = f"{fic_id}.txt"
+#
+#                shutil.copy(os.path.join(fandom_dirpath, f'fics_{tokenization}s', fname), os.path.join(fold_out_dirpath, f"{fic_id}.txt"))
 
-            for fic_id in filtered_metadata['fic_id']:
-                if tokenization == 'para':
-                    fname = f"{fic_id}_tokenized_paras.txt"
-                else:
-                    fname = f"{fic_id}.txt"
-
-                shutil.copy(os.path.join(fandom_dirpath, f'fics_{tokenization}s', fname), os.path.join(fold_out_dirpath, f"{fic_id}.txt"))
-
-    return filtered_metadata
+    return filtered_metadata, filtered_metadata['fic_id'].tolist()
 
 
 def get_selected_tags(metadata, input_tag_colname, tag_search, out_dirpath):
@@ -197,20 +195,24 @@ def split(metadata, tag_colname, tag_vocab, out_dirpath):
     return metadata_split, fic_ids
 
 
+def save_metadata(metadata, out_dirpath):
+        fpath = os.path.join(out_dirpath, f'metadata.csv')
+        metadata.to_csv(fpath, index=False)
+
+
 def copy_fics(fic_ids, fandom_dirpath, out_dirpath):
-    for fold in ['train', 'dev', 'test']:
-        for tokenization in ['sent', 'para']:
-            fold_out_dirpath = os.path.join(out_dirpath, f'{fold}_{tokenization}s')
-            if not os.path.exists(fold_out_dirpath):
-                os.mkdir(fold_out_dirpath)
+    for tokenization in ['sent', 'para']:
+        fics_out_dirpath = os.path.join(out_dirpath, f'filtered_{tokenization}s')
+        if not os.path.exists(fics_out_dirpath):
+            os.mkdir(fics_out_dirpath)
 
-            for fic_id in fic_ids[fold]:
-                if tokenization == 'para':
-                    fname = f"{fic_id}_tokenized_paras.txt"
-                else:
-                    fname = f"{fic_id}.txt"
+        for fic_id in fic_ids:
+            if tokenization == 'para':
+                fname = f"{fic_id}_tokenized_paras.txt"
+            else:
+                fname = f"{fic_id}.txt"
 
-                shutil.copy(os.path.join(fandom_dirpath, f'fics_{tokenization}s', fname), os.path.join(fold_out_dirpath, f"{fic_id}.txt"))
+            shutil.copy(os.path.join(fandom_dirpath, f'fics_{tokenization}s', fname), os.path.join(fics_out_dirpath, f"{fic_id}.txt"))
 
 def sample_negatives(metadata, selected_tag_colname, sampling_strategy):
 
@@ -244,24 +246,9 @@ def main():
     # Settings
     fandom = args.fandom
     dataset_name = args.dataset_name
-    #tag_search = [r'AU', r'(A|a)lternate (U|u)niverse', r'(C|c)anon divergen']
-    #tag_search = [r'Fluff', r'Angst', r'Romance',
-    #                r'Humor', r'Hurt/Comfort']
-    tag_search = [r'(D|d)raco']
-    tag_replacements = {re.compile(t, re.IGNORECASE): t for t in tag_search}
-    negative_sampling_strategy = 'average'
     upper_word_limit = 5000
     lower_word_limit = 1000
     input_tag_colname = 'additional tags'
-    save_initial_filter = False
-    normalized_tag_colname = 'normalized_tags'
-    overwrite_tag_normalization_dict = True
-    normalize = False
-    if normalize:
-        selected_tag_colname = f'top{tag_threshold}_normalized_tags'
-    else:
-        #selected_tag_colname = f'top{tag_threshold}_tags'
-        selected_tag_colname = 'selected_tags'
 
     # I/O
     metadata_fpath = f'/usr2/scratch/fanfic/ao3_{fandom}_text/stories.csv'
@@ -269,7 +256,6 @@ def main():
     out_dirpath = os.path.join(fandom_dirpath, dataset_name)
     if not os.path.exists(out_dirpath):
         os.mkdir(out_dirpath)
-    normalization_dict_fpath = os.path.join(out_dirpath, 'tag_normalization.pkl')
 
     # Load metadata
     metadata = pd.read_csv(metadata_fpath)
@@ -281,35 +267,12 @@ def main():
     if isinstance(metadata.iloc[0][input_tag_colname], str):
         metadata[input_tag_colname] = metadata[input_tag_colname].map(lambda x: eval(x))
 
-    # Filter
-    metadata = initial_filter(metadata, lower_word_limit, upper_word_limit, fandom_dirpath, save_initial_filter)
+    # Filter and save
+    metadata, fic_ids = initial_filter(metadata, lower_word_limit, upper_word_limit, fandom_dirpath)
 
-    # Normalize tags
-    if normalize: 
-        if not os.path.exists(normalization_dict_fpath) or overwrite_tag_normalization_dict:
-            print("Building normalization dictionary...")
-            metatags = build_normalization_dict(metadata, input_tag_colname, out_dirpath)
-
-        else:
-            print("Loading normalization dictionary...")
-            with open(normalization_dict_fpath, 'rb') as f:
-                metatags = pickle.load(f)
-
-        print("Normalizing tags...")
-        metadata = normalize_tags(metadata, input_tag_colname, normalized_tag_colname, metatags, tag_threshold)
-
-        input_tag_colname = normalized_tag_colname
-
-    # add selected tags column
-    metadata = select_tags(metadata, input_tag_colname, selected_tag_colname, tag_replacements)
-
-    # Enforce positive class proportion
-    metadata = sample_negatives(metadata, selected_tag_colname, negative_sampling_strategy)
-
-    # Shuffle and split
-    metadata_split, fic_ids = split(metadata, selected_tag_colname, tag_replacements.values(), out_dirpath)
-    for fold in ['train', 'dev', 'test']:
-        print(f'{fold} set: {len(metadata_split[fold])} fics')
+    # Save metadata
+    print("Saving metadata...")
+    save_metadata(metadata, out_dirpath)
 
     # Copy fics
     print("Copying fics...")
@@ -319,13 +282,11 @@ def main():
     with open(os.path.join(out_dirpath, 'info.txt'), 'w') as f:
         f.write(f'Lower word limit: {lower_word_limit}\n')
         f.write(f'Upper word limit: {upper_word_limit}\n')
-        f.write(f'Selected tags: {tag_search}\n')
-        f.write(f'Negative sampling strategy: {negative_sampling_strategy}\n')
+        f.write(f'Language: English\n')
         f.write(f'Total fics: {len(metadata)}\n')
-        for fold in ['train', 'dev', 'test']:
-            f.write(f'{fold} set: {len(metadata_split[fold])} fics\n')
-        f.write(f'Number of words in training set: {metadata_split["train"]["words"].sum()}')
+        f.write(f'Number of words: {metadata["words"].sum()}')
 
+    print(f'Total fics: {len(metadata)}\n')
 
 if __name__ == '__main__':
     main()
