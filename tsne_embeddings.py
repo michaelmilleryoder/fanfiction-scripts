@@ -18,14 +18,15 @@ def main():
     # I/O
     fanfic_mt_embs_fpath = '/usr0/home/jfiacco/Research/fanfic/embeddings/fanfic.harry_potter.1k-5k.v2.lower.model.vec'
     canon_mt_embs_fpath = '/usr0/home/jfiacco/Research/fanfic/embeddings/canon.harry_potter.lower.model.vec'
-    fanfic2bg_path = '/usr0/home/qinlans/ACL_2019/transformation_matrices/fanfic_to_background.harry_potter.mikolov.v2.txt'
-    canon2bg_path = '/usr0/home/qinlans/ACL_2019/transformation_matrices/canon_to_background.harry_potter.mikolov.txt'
+    fanfic2bg_path = '/usr0/home/qinlans/ACL_2019/transformation_matrices/fanfic_to_background.harry_potter.mikolov.v2.nptxt'
+    canon2bg_path = '/usr0/home/qinlans/ACL_2019/transformation_matrices/canon_to_background.harry_potter.mikolov.nptxt'
 
     fics_fpath = '/usr0/home/mamille2/erebor/fanfiction-project/data/ao3/harrypotter/dataset_1k-5k/filtered_paras'
     canon_fpath = '/usr0/home/jfiacco/Research/fanfic/canon_data/harry_potter_tokenized/'
 
     # TSNE settings
-    #tsne_fic_ids_path = None # if None, then run TSNE on all fics
+    run_tsne = False
+    tsne_fic_ids_path = None # if None, then run TSNE on all fics
     #tsne_fic_ids_path = '/usr0/home/mamille2/erebor/fanfiction-project/data/qian_sample1_fic_ids.csv' # if None, then run TSNE on all fics
     tsne_char_embs_outpath = '/usr0/home/mamille2/erebor/fanfiction-project/output/tsne_chars_lc10_context.nptxt'
     tsne_char_labels_outpath = '/usr0/home/mamille2/erebor/fanfiction-project/output/tsne_chars_lc10_context_labels.txt'
@@ -39,14 +40,16 @@ def main():
         'ron',
         'ginny',
         'draco',
-        'neville',
-        'luna',
-        'remus',
-        'sirius',
-        'severus',
-        'james',
-        'lily',
+#        'neville',
+#        'luna',
+#        'remus',
+#        'sirius',
+#        'severus',
+#        'james',
+#        'lily',
     ]
+
+    vector_combination = 'context_only' # {'add', 'context_only'}
 
     # Load selected files for TSNE
     if tsne_fic_ids_path is not None:
@@ -149,14 +152,17 @@ def main():
     #             if char_vec.shape != (200,): continue # only context words found are not in vocabulary
     #             char_vec = np.mean([char_vecs[c]['fanfic'], context_vec], axis=0)
 
-                #char_vec = context_vec
-                char_vec = np.add(char_vecs[c]['fanfic'], context_vec)
+                if vector_combination == 'context_only':
+                    char_vec = context_vec
+                
+                elif vector_combination == 'add':
+                    char_vec = np.add(char_vecs[c]['fanfic'], context_vec)
 
                 if char_vec.shape != (100,): continue # only context words found are not in vocabulary
                 char_vecs_per_fic[c][cw][fname] = char_vec
 
             char_vecs[c][f'fanfic_lc{cw}_context'] = np.mean(list(char_vecs_per_fic[c][cw].values()), axis=0)
-            char_vecs[c][f'fanfic_lc{cw}_context_per_fic'] = char_vecs_per_fic[c][cw]
+            char_vecs[c][f'fanfic_lc{cw}_per_fic_{vector_combination}'] = char_vecs_per_fic[c][cw]
 
 
     # ## Local context for canon
@@ -230,7 +236,7 @@ def main():
                 char_vecs_per_canon[c][cw][fname] = char_vec
 
             char_vecs[c][f'canon_lc{cw}_context'] = np.mean(list(char_vecs_per_canon[c][cw].values()), axis=0)
-            char_vecs[c][f'canon_lc{cw}_context_per_story'] = char_vecs_per_canon[c][cw]
+            char_vecs[c][f'canon_lc{cw}_per_story_{vector_combination}'] = char_vecs_per_canon[c][cw]
 
 
     # ## Distances canon-fanfic
@@ -239,39 +245,41 @@ def main():
             char_vecs[c][f'dist_lc{cw}_context_f-c'] = cosine(char_vecs[c][f'fanfic_lc{cw}_context'], char_vecs[c][f'canon_lc{cw}_context'])
 
     # Save distances, embeddings
-    with open('/usr0/home/mamille2/erebor/fanfiction-project/embeddings/char_vecs_lc_tfidf.pkl', 'wb') as f:
+    with open(f'/usr0/home/mamille2/erebor/fanfiction-project/embeddings/char_vecs_lc{cw}_{vector_combination}.pkl', 'wb') as f:
         pickle.dump(char_vecs, f)
 
 
     # ## Reduce dimensions
-    all_char_vecs = []
-    char_labels = []
-    fname_labels = []
+    if run_tsne:
+        
+        all_char_vecs = []
+        char_labels = []
+        fname_labels = []
 
-    # Fanfic
-    for c in chars:
+        # Fanfic
+        for c in chars:
 
-        for fname, vec in sorted(char_vecs_per_fic[c][10].items()) + sorted(char_vecs_per_canon[c][10].items()):
-            if tsne_fic_ids_path is None or fname in selected_fic_ids:
-                all_char_vecs.append(vec)
-                char_labels.append(c)
-                fname_labels.append(fname)
+            for fname, vec in sorted(char_vecs_per_fic[c][10].items()) + sorted(char_vecs_per_canon[c][10].items()):
+                if tsne_fic_ids_path is None or fname in selected_fic_ids:
+                    all_char_vecs.append(vec)
+                    char_labels.append(c)
+                    fname_labels.append(fname)
 
-    print("Running PCA...")
-    pca = PCA(n_components=20)
-    reduced = pca.fit_transform(all_char_vecs)
+        print("Running PCA...")
+        pca = PCA(n_components=20)
+        reduced = pca.fit_transform(all_char_vecs)
 
-    print("Running TSNE...")
-    tsne = TSNE(n_components=2)
-    tsne_reduced = tsne.fit_transform(reduced)
+        print("Running TSNE...")
+        tsne = TSNE(n_components=2)
+        tsne_reduced = tsne.fit_transform(reduced)
 
-    np.savetxt(tsne_char_embs_outpath, tsne_reduced)
-    with open(tsne_char_labels_outpath, 'w') as f:
-        for char in char_labels:
-            f.write(f"{char}\n")
-    with open(tsne_fname_labels_outpath, 'w') as f:
-        for fname in fname_labels:
-            f.write(f"{fname}\n")
+        np.savetxt(tsne_char_embs_outpath, tsne_reduced)
+        with open(tsne_char_labels_outpath, 'w') as f:
+            for char in char_labels:
+                f.write(f"{char}\n")
+        with open(tsne_fname_labels_outpath, 'w') as f:
+            for fname in fname_labels:
+                f.write(f"{fname}\n")
 
     #print("Plotting characters...")
     #chars2i = {c: i for i,c in enumerate(chars)}
