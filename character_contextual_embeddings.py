@@ -49,6 +49,16 @@ def main():
 #        'lily',
     ]
 
+    with open('harrypotter_characters.txt') as f:
+        char_names = [c.lower() for c in f.read().splitlines()]
+        char_names = set([name for c in char_names for name in c.split()])
+
+    pronouns = [
+                'she', 'they', 'he', 'we', 'i',
+                'her', 'their', 'him', 'us', 'me',
+                'hers', 'theirs', 'his', 'our', 'my', 'ours', 'mine',
+                ]
+
     vector_combination = 'context_only' # {'add', 'context_only'}
 
     # Load selected files for TSNE
@@ -144,7 +154,13 @@ def main():
                 if len(context_wds) == 0: continue
                     
                 wd_indices, wd_weights = idf_weights_fanfic[c][cw]
-                context_embs = [fanfic_aligned[w] * wd_weights[wd_indices[w]] for w in context_wds if                             w in fanfic_mt_embs and w in wd_indices]
+                context_embs = [fanfic_aligned[w] * wd_weights[wd_indices[w]] for w in context_wds if \
+        w in fanfic_mt_embs and \
+        w in wd_indices and \
+        not w in char_names and \
+        not w in pronouns
+                ]
+
                 if len(context_embs) == 0: continue
                 context_vec = np.mean(context_embs, axis=0)
                 
@@ -223,7 +239,13 @@ def main():
                 if len(context_wds) == 0: continue
                     
                 wd_indices, wd_weights = idf_weights_canon[c][cw]
-                context_embs = [canon_aligned[w] * wd_weights[wd_indices[w]] for w in context_wds if                             w in canon_mt_embs and w in wd_indices]
+                context_embs = [canon_aligned[w] * wd_weights[wd_indices[w]] for w in context_wds if \
+        w in canon_mt_embs and \
+        w in wd_indices and \
+        not w in char_names and \
+        not w in pronouns
+                ]
+
                 context_vec = np.mean(context_embs, axis=0)
                 
     #             char_vec = np.hstack([char_vecs[c]['canon'], context_vec])
@@ -245,7 +267,7 @@ def main():
             char_vecs[c][f'dist_lc{cw}_context_f-c'] = cosine(char_vecs[c][f'fanfic_lc{cw}_context'], char_vecs[c][f'canon_lc{cw}_context'])
 
     # Save distances, embeddings
-    with open(f'/usr0/home/mamille2/erebor/fanfiction-project/embeddings/char_vecs_lc{cw}_{vector_combination}.pkl', 'wb') as f:
+    with open(f'/usr0/home/mamille2/erebor/fanfiction-project/embeddings/char_vecs_lc{cw}_{vector_combination}_nonames.pkl', 'wb') as f:
         pickle.dump(char_vecs, f)
 
 
