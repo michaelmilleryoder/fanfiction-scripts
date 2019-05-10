@@ -806,11 +806,19 @@
     "# Load character pairing embeddings\n",
     "import pickle\n",
     "\n",
+<<<<<<< HEAD
     "# pairing_char_embs_fpath = {'embs':'/usr2/mamille2/fanfiction-project/embeddings/char_vecs_lc_context_only_paragraphs.pkl',\n",
     "#                             'unigrams': '/usr2/mamille2/fanfiction-project/embeddings/char_vecs_lc_ngrams1_paragraphs.pkl'}\n",
     "\n",
     "pairing_char_embs_fpath = {'unigrams_paragraphs':'/usr2/mamille2/fanfiction-project/embeddings/char_vecs_paragraph_ngrams1_paragraphs.pkl',\n",
     "                            'unigrams_assertions': '/usr2/mamille2/fanfiction-project/embeddings/char_vecs_assertion_ngrams1_paragraphs.pkl'}\n",
+=======
+    "pairing_char_embs_fpath = {\n",
+    "    #'embs':'/usr2/mamille2/fanfiction-project/embeddings/char_vecs_lc_context_only_paragraphs.pkl',\n",
+    "    #'unigrams': '/usr2/mamille2/fanfiction-project/embeddings/char_vecs_lc_ngrams1_paragraphs.pkl'\n",
+    "    'unigrams': '/usr2/mamille2/fanfiction-project/embeddings/char_vecs_assertion_local_ngrams1_paragraphs.pkl'\n",
+    "}\n",
+>>>>>>> 1c126dfac4316512df85bda2ba809d18baff6867
     "\n",
     "pairing_char_embs = {}\n",
     "for feature_set in pairing_char_embs_fpath:\n",
