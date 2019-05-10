@@ -222,10 +222,10 @@ def main():
     
     input_type = 'assertion' # {'assertion', 'paragraph'}
     context = 'local' # {'local', 'all'}
-    extract_contexts = False
+    extract_contexts = True
     nonames = True # remove names and pronouns from consideration
     fic_pairing_paragraph_threshold = 5
-    context_windows = [10] # before and after, so total window is this value * 2
+    context_windows = [5, 10, 25, 50] # before and after, so total window is this value * 2
     mt_align = False
     #save_paras_fpath = '/usr0/home/mamille2/erebor/fanfiction-project/data/ao3/harrypotter/pairings/{}/{}_paras.txt' # None for not saving this
     save_paras_fpath = None
