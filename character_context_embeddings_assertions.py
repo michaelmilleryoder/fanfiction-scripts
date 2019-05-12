@@ -218,14 +218,14 @@ def main():
         ('harry', 'ron'),
     ]
 
-    vector_combination = 'ngrams1' # {'add', 'context_only', 'ngrams1'}
-    
+    vector_combination = 'context_only' # {'add', 'context_only', 'ngrams1'}
     input_type = 'assertion' # {'assertion', 'paragraph'}
     context = 'local' # {'local', 'all'}
-    extract_contexts = True
+    extract_contexts = False
     nonames = True # remove names and pronouns from consideration
     fic_pairing_paragraph_threshold = 5
-    context_windows = [5, 10, 25, 50] # before and after, so total window is this value * 2
+    #context_windows = [5, 10, 25, 50] # before and after, so total window is this value * 2
+    context_windows = [10] # before and after, so total window is this value * 2
     mt_align = False
     #save_paras_fpath = '/usr0/home/mamille2/erebor/fanfiction-project/data/ao3/harrypotter/pairings/{}/{}_paras.txt' # None for not saving this
     save_paras_fpath = None
@@ -254,17 +254,17 @@ def main():
     #plot_outpath = '/usr0/home/mamille2/erebor/fanfiction-project/output/tsne_chars_lc10_context_plot.png'
 
     # I/O
-    fanfic_embs_fpath = '/usr0/home/jfiacco/Research/fanfic/embeddings/fanfic.harry_potter.all.lower.model.vec'
-    #fanfic_mt_embs_fpath = '/usr0/home/jfiacco/Research/fanfic/embeddings/fanfic.harry_potter.1k-5k.v2.lower.model.vec'
+    #fanfic_embs_fpath = '/usr0/home/jfiacco/Research/fanfic/embeddings/fanfic.harry_potter.all.lower.model.vec'
+    fanfic_embs_fpath = '/usr0/home/jfiacco/Research/fanfic/embeddings/background.lower.model.vec'
     #canon_mt_embs_fpath = '/usr0/home/jfiacco/Research/fanfic/embeddings/canon.harry_potter.lower.model.vec'
-    #fanfic2bg_path = '/usr0/home/qinlans/ACL_2019/transformation_matrices/fanfic_to_background.harry_potter.mikolov.v2.nptxt'
+    fanfic2bg_path = '/usr0/home/qinlans/ACL_2019/transformation_matrices/fanfic_to_background.harry_potter.mikolov.v2.nptxt'
     #canon2bg_path = '/usr0/home/qinlans/ACL_2019/transformation_matrices/canon_to_background.harry_potter.mikolov.nptxt'
 
     #fics_fpath = '/usr0/home/mamille2/erebor/fanfiction-project/data/ao3/harrypotter/fics_paras'
     assertions_fpath = '/usr0/home/mamille2/erebor/fanfiction-project/data/ao3/harrypotter/emnlp_dataset_6k/output/assertion_extraction'
 
     char_contexts_outpath = '/usr0/home/mamille2/erebor/fanfiction-project/temp/char_contexts_{}_{}.pkl'
-    char_embs_outpath = '/usr0/home/mamille2/erebor/fanfiction-project/embeddings/char_vecs_{}_{}_{}.pkl'
+    char_embs_outpath = '/usr0/home/mamille2/erebor/fanfiction-project/embeddings/char_vecs_{}_{}_{}_background.pkl'
     vectorizer_outpath = '/usr0/home/mamille2/erebor/fanfiction-project/temp/{}_vectorizer_{}.pkl'
 
     # Load selected files for TSNE
@@ -282,7 +282,7 @@ def main():
         # Load transformation matrices
         if mt_align:
             fanfic2bg = np.loadtxt(fanfic2bg_path)
-            canon2bg = np.loadtxt(canon2bg_path)
+            #canon2bg = np.loadtxt(canon2bg_path)
 
         char_vecs = {}
 
@@ -290,9 +290,9 @@ def main():
         for c in chars:
             char_vecs[c] = {}
             if mt_align:
-                char_vecs[c]['fanfic'] = np.matmul(fanfic2bg, fanfic_mt_embs[c]) 
-                char_vecs[c]['canon'] = np.matmul(canon2bg, canon_mt_embs[c]) 
-                char_vecs[c]['dist_f-c'] = cosine(char_vecs[c]['fanfic'], char_vecs[c]['canon'])
+                char_vecs[c]['fanfic'] = np.matmul(fanfic2bg, fanfic_embs[c]) 
+                #char_vecs[c]['canon'] = np.matmul(canon2bg, canon_mt_embs[c]) 
+                #char_vecs[c]['dist_f-c'] = cosine(char_vecs[c]['fanfic'], char_vecs[c]['canon'])
 
             else:
                 char_vecs[c]['fanfic'] = fanfic_embs[c]
@@ -491,13 +491,13 @@ def main():
 
                             char_vecs_per_fic[pairing][c][cw][fname] = char_vec
 
-            elif context == 'paragraph' or context == 'assertion':
+            elif context == 'paragraph':
                 for fname, context_wds in char_contexts_fanfic[pairing].items(): # for every fic, sorted
                     if len(context_wds) == 0 or not pairing in idf_weights_fanfic:
                         continue
                     wd_indices, wd_weights = idf_weights_fanfic[pairing]
 
-                    context_embs = [fanfic_embs[w] * wd_weights[wd_indices[w]] for w in context_wds if w in fanfic_embs and w in wd_indices]
+                    #context_embs = [fanfic_embs[w] * wd_weights[wd_indices[w]] for w in context_wds if w in fanfic_embs and w in wd_indices]
 
                     if len(context_embs) == 0: continue
                     context_vec = np.mean(context_embs, axis=0)
