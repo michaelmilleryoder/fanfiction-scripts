@@ -6,6 +6,7 @@ from sklearn.manifold import TSNE
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import csv
 import os
 from tqdm import tqdm as tqdm
 import pickle
@@ -26,13 +27,127 @@ def pairing_present(text, pairing):
     else:
         return False
 
+def extract_character_quote(params):
+    """ Extract character quotes from a fic """
+
+    fname = params[0]
+    pairings = params[1]
+    input_fpath = params[2]
+    context_windows = params[3]
+    fic_pairing_paragraph_threshold = params[4]
+    chars = params[5]
+    context = params[6]
+
+    fic_id = int(fname.split('.')[0])
+
+    fic_contexts = []
+    
+    with open(os.path.join(input_fpath, fname)) as f:
+
+        quotes = json.load(f)
+
+    # Load tmp file
+    token_fpath = '/usr0/home/mamille2/fanfiction-project/fanfiction-nlp/quote_attribution/tmp/{}/token_tmp.txt'
+    tokens = pd.read_csv(token_fpath.format(fic_id), sep='\t', quoting=csv.QUOTE_NONE)
+
+    speakers = set([s['speaker'].lower() for s in quotes])
+    
+    for pairing in pairings:
+        if any([pairing[0] in s for s in speakers]) and any([pairing[1] in s for s in speakers]):
+
+            # Grab all paragraphs from that speaker, see if replying to the other
+            for c in pairing:
+                speaker = [s for s in speakers if c in s]
+                other_char = [other for other in pairing if other!=c][0]
+                for s in speaker: # could have multiple corresponding speakers
+                    speaker_quotes = [q for q in quotes if q['speaker']==s]
+                    speaker_replies = [q for q in speaker_quotes if q['replyto'] != -1]
+
+                    # Check reply to what quote
+                    for quote in speaker_replies:
+                        replied_para = quote['replyto']
+                        replied_to = [q for q in quotes if q['paragraph']==replied_para][0]
+                        if replied_to['speaker'] == other_char:
+                            para_quotes = ' '.join([t['quote'].lower() for t in quote['quotes']])
+                            replied_to_quotes = ' '.join([t['quote'].lower() for t in replied_to['quotes']])
+                            pairing_quote = ' '.join([para_quotes, replied_to_quotes])
+                            fic_contexts.extend(pairing_quote.split())
+
+                    # Check if other is in quote
+                    for quote in speaker_quotes:
+                        added_quote = False
+                        para_quotes = ' '.join([t['quote'].lower() for t in quote['quotes']])
+                        if other_char in para_quotes:
+                            fic_contexts.extend([tok for tok in para_quotes.split() if not tok.startswith('ccc_')])
+                            break
+                            
+                        # Check if other is in following or previous paragraph
+                        para_id = quote['paragraph']
+                        prev_para = ' '.join(tokens.loc[tokens['paragraphId']==para_id-1,
+                                                'originalWord'].dropna().str.lower().tolist())
+                        if other_char in prev_para:
+                            fic_contexts.extend([tok for tok in para_quotes.split() if not tok.startswith('ccc_')])
+                            break
+        
+                        next_para = ' '.join(tokens.loc[tokens['paragraphId']==para_id+1,
+                                                'originalWord'].dropna().str.lower().tolist())
+                        if other_char in next_para:
+                            fic_contexts.extend([tok for tok in para_quotes.split() if not tok.startswith('ccc_')])
+        
+        char_contexts_fanfic[pairing][fic_id] = fic_contexts
+
+
+def extract_character_quote_restrictive(params):
+    """ Extract character quotes from a fic """
+
+    fname = params[0]
+    pairings = params[1]
+    input_fpath = params[2]
+    context_windows = params[3]
+    fic_pairing_paragraph_threshold = params[4]
+    chars = params[5]
+    context = params[6]
+
+    fic_id = int(fname.split('.')[0])
+
+    fic_contexts = []
+    
+    with open(os.path.join(input_fpath, fname)) as f:
+
+        quotes = json.load(f)
+
+    speakers = set([s['speaker'].lower() for s in quotes])
+    
+    for pairing in pairings:
+        if any([pairing[0] in s for s in speakers]) and any([pairing[1] in s for s in speakers]):
+
+            # Grab all paragraphs from that speaker, see if replying to the other
+            for c in pairing:
+                speaker = [s for s in speakers if c in s]
+                for s in speaker: # could have multiple corresponding speakers
+                    speaker_quotes = [q for q in quotes if q['speaker']==s]
+                    speaker_replies = [q for q in speaker_quotes if q['replyto'] != -1]
+
+                    # Check reply to what quote
+                    for quote in speaker_replies:
+                        replied_para = quote['replyto']
+                        replied_to = [q for q in quotes if q['paragraph']==replied_para][0]
+                        other_char = [other for other in pairing if other!=c][0]
+                        if replied_to['speaker'] == other_char:
+                            para_quotes = ' '.join([t['quote'].lower() for t in quote['quotes']])
+                            replied_to_quotes = ' '.join([t['quote'].lower() for t in replied_to['quotes']])
+                            pairing_quote = ' '.join([para_quotes, replied_to_quotes])
+                            fic_contexts.extend(pairing_quote.split())
+        
+        char_contexts_fanfic[pairing][fic_id] = fic_contexts
+
 
 def extract_character_assertion(params):
     """ Extract character assertions from a fic """
 
     fname = params[0]
     pairings = params[1]
-    assertions_fpath = params[2]
+    input_fpath = params[2]
     context_windows = params[3]
     fic_pairing_paragraph_threshold = params[4]
     chars = params[5]
@@ -40,7 +155,7 @@ def extract_character_assertion(params):
 
     fic_id = int(fname.split('.')[0])
     
-    with open(os.path.join(assertions_fpath, fname)) as f:
+    with open(os.path.join(input_fpath, fname)) as f:
 
         assertions = json.load(f)
 
@@ -98,13 +213,13 @@ def extract_character_assertion(params):
 def extract_character_paragraph(params):
     fname = params[0]
     pairings = params[1]
-    assertions_fpath = params[2]
+    input_fpath = params[2]
     fic_pairing_paragraph_threshold = params[4]
     save_paras_fpath = params[5]
 
     fic_id = int(fname.split('_')[0])
     
-    with open(os.path.join(assertions_fpath, fname)) as f:
+    with open(os.path.join(input_fpath, fname)) as f:
         paras = [p.split() for p in f.read().splitlines()]
         paras_present = []
 
@@ -141,14 +256,14 @@ def extract_character_paragraph(params):
 def extract_character_local_context(params):
     fname = params[0]
     pairings = params[1]
-    assertions_fpath = params[2]
+    input_fpath = params[2]
     context_windows = params[3]
     fic_pairing_paragraph_threshold = params[4]
     save_paras_fpath = params[5]
 
     fic_id = int(fname.split('_')[0])
     
-    with open(os.path.join(assertions_fpath, fname)) as f:
+    with open(os.path.join(input_fpath, fname)) as f:
         paras = [p.split() for p in f.read().splitlines()]
         paras_present = []
 
@@ -218,10 +333,10 @@ def main():
         ('harry', 'ron'),
     ]
 
-    vector_combination = 'context_only' # {'add', 'context_only', 'ngrams1'}
-    input_type = 'assertion' # {'assertion', 'paragraph'}
-    context = 'local' # {'local', 'all'}
-    extract_contexts = False
+    vector_combination = 'ngrams1' # {'add', 'context_only', 'ngrams1'}
+    input_type = 'quote' # {'assertion', 'quote', 'paragraph'}
+    context = 'all' # {'local', 'all'}
+    extract_contexts = True
     nonames = True # remove names and pronouns from consideration
     fic_pairing_paragraph_threshold = 5
     #context_windows = [5, 10, 25, 50] # before and after, so total window is this value * 2
@@ -254,17 +369,20 @@ def main():
     #plot_outpath = '/usr0/home/mamille2/erebor/fanfiction-project/output/tsne_chars_lc10_context_plot.png'
 
     # I/O
-    #fanfic_embs_fpath = '/usr0/home/jfiacco/Research/fanfic/embeddings/fanfic.harry_potter.all.lower.model.vec'
-    fanfic_embs_fpath = '/usr0/home/jfiacco/Research/fanfic/embeddings/background.lower.model.vec'
+    fanfic_embs_fpath = '/usr0/home/jfiacco/Research/fanfic/embeddings/fanfic.harry_potter.all.lower.model.vec'
+    #fanfic_embs_fpath = '/usr0/home/jfiacco/Research/fanfic/embeddings/background.lower.model.vec'
     #canon_mt_embs_fpath = '/usr0/home/jfiacco/Research/fanfic/embeddings/canon.harry_potter.lower.model.vec'
     fanfic2bg_path = '/usr0/home/qinlans/ACL_2019/transformation_matrices/fanfic_to_background.harry_potter.mikolov.v2.nptxt'
     #canon2bg_path = '/usr0/home/qinlans/ACL_2019/transformation_matrices/canon_to_background.harry_potter.mikolov.nptxt'
 
     #fics_fpath = '/usr0/home/mamille2/erebor/fanfiction-project/data/ao3/harrypotter/fics_paras'
-    assertions_fpath = '/usr0/home/mamille2/erebor/fanfiction-project/data/ao3/harrypotter/emnlp_dataset_6k/output/assertion_extraction'
+    if input_type == 'assertion':
+        input_fpath = '/usr0/home/mamille2/erebor/fanfiction-project/data/ao3/harrypotter/emnlp_dataset_6k/output/assertion_extraction'
+    elif input_type == 'quote':
+        input_fpath = '/usr0/home/mamille2/erebor/fanfiction-project/data/ao3/harrypotter/emnlp_dataset_6k/output/quote_attribution'
 
     char_contexts_outpath = '/usr0/home/mamille2/erebor/fanfiction-project/temp/char_contexts_{}_{}.pkl'
-    char_embs_outpath = '/usr0/home/mamille2/erebor/fanfiction-project/embeddings/char_vecs_{}_{}_{}_background.pkl'
+    char_embs_outpath = '/usr0/home/mamille2/erebor/fanfiction-project/embeddings/char_vecs_{}_{}_{}.pkl'
     vectorizer_outpath = '/usr0/home/mamille2/erebor/fanfiction-project/temp/{}_vectorizer_{}.pkl'
 
     # Load selected files for TSNE
@@ -313,10 +431,10 @@ def main():
                         char_contexts_fanfic[pairing][c][cw] = manager.dict()
         
         with Pool(15) as p:
-            fnames = sorted(os.listdir(assertions_fpath))
+            fnames = sorted(os.listdir(input_fpath))
             params = list(zip(fnames, 
                             itertools.repeat(pairings),
-                            itertools.repeat(assertions_fpath),
+                            itertools.repeat(input_fpath),
                             itertools.repeat(context_windows),
                             itertools.repeat(fic_pairing_paragraph_threshold),
                             itertools.repeat(chars),
@@ -331,6 +449,10 @@ def main():
                 list(tqdm(p.imap(extract_character_assertion, params), total=len(params))) 
                 #list(map(extract_character_assertion, params))
 
+            elif input_type == 'quote':
+                list(tqdm(p.imap(extract_character_quote, params), total=len(params))) 
+                #list(map(extract_character_quote, params))
+
         # Save extracted contexts
         print("Saving extracted contexts...")
         char_contexts_fanfic_d = {}
@@ -342,7 +464,7 @@ def main():
                     for cw in context_windows:
                         char_contexts_fanfic_d[pairing][c][cw] = char_contexts_fanfic[pairing][c][cw].copy()
 
-        elif context == 'paragraph' or context == 'assertion':
+        elif context == 'all':
             for pairing in pairings:
                 char_contexts_fanfic_d[pairing] = char_contexts_fanfic[pairing].copy()
 
@@ -405,7 +527,7 @@ def main():
                                 char_vecs_per_fic[pairing][c][cw][fname] = char_vecs[i]
                                 i += 1
 
-            elif context == 'paragraph' or context == 'assertion':
+            elif context == 'all':
                 for fname, context_wds in sorted(char_contexts_fanfic[pairing].items()): # for every fic, sorted
                     if len(context_wds) == 0:
                         continue
@@ -441,19 +563,6 @@ def main():
                             idf_weights_fanfic[pairing][c][cw] = (vectorizer.vocabulary_, vectorizer.idf_)
                         except ValueError as e:
                             del idf_weights_fanfic[pairing][c]
-
-            elif context == 'paragraph' or context == 'assertion':
-                context_toks = [' '.join(toks) for toks in char_contexts_fanfic[pairing].values()]
-                if len(context_toks) == 0:
-                    continue
-            
-                vectorizer = TfidfVectorizer(stop_words=stopwords)
-                try:
-                    vectorizer.fit(context_toks)
-                    idf_weights_fanfic[pairing] = (vectorizer.vocabulary_, vectorizer.idf_)
-                except ValueError as e:
-                    del idf_weights_fanfic[pairing] # might be wrong
-
 
         # Get contextualized fanfic vectors
         print("Building fanfic contextualized vectors...")
@@ -491,7 +600,7 @@ def main():
 
                             char_vecs_per_fic[pairing][c][cw][fname] = char_vec
 
-            elif context == 'paragraph':
+            elif context == 'all':
                 for fname, context_wds in char_contexts_fanfic[pairing].items(): # for every fic, sorted
                     if len(context_wds) == 0 or not pairing in idf_weights_fanfic:
                         continue
@@ -508,14 +617,13 @@ def main():
                     elif vector_combination == 'add':
                         char_vec = np.add(char_vecs[c]['fanfic'], context_vec)
 
-                    if char_vec.shape != (100,): continue # only context words found are not in vocabulary
+                    if not vector_combination.startswith('ngrams') and char_vec.shape != (100,): continue
 
                     char_vecs_per_fic[pairing][fname] = char_vec
 
 
     # Save embeddings
-    for cw in context_windows:
-        with open(char_embs_outpath.format(input_type, context, vector_combination), 'wb') as f:
-            pickle.dump(char_vecs_per_fic, f)
+    with open(char_embs_outpath.format(input_type, context, vector_combination), 'wb') as f:
+        pickle.dump(char_vecs_per_fic, f)
 
 if __name__ == '__main__': main()
