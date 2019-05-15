@@ -27,6 +27,7 @@ def pairing_present(text, pairing):
     else:
         return False
 
+
 def extract_character_quote(params):
     """ Extract character quotes from a fic """
 
@@ -253,6 +254,40 @@ def extract_character_paragraph(params):
                 char_contexts_fanfic[pairing][fic_id] = fic_contexts
 
 
+def extract_character_local_context_canon(params):
+    fname = params[0]
+    pairings = params[1]
+    input_fpath = params[2]
+    context_windows = params[3]
+    fic_pairing_paragraph_threshold = params[4]
+    save_paras_fpath = params[5]
+
+    fic_id = 'all'
+
+    with open(os.path.join(input_fpath, fname)) as f:
+        paras = [p.lower().split() for p in f.read().splitlines()]
+        paras_present = []
+
+        for pairing in pairings:
+
+            fic_contexts = {w: [] for w in context_windows}
+                
+            for para in paras:
+
+                # Determine whether both characters are in the paragraph
+                if pairing_present(' '.join(para), pairing):
+
+                    paras_present.append(' '.join(para))
+
+                    for c in pairing:
+                        for idx in [i for i,token in enumerate(para) if token==c]:
+                            for context_window in context_windows:
+                                
+                                fic_contexts[context_window] += para[max(0, idx-context_window) : idx] # before
+                                fic_contexts[context_window] += para[idx+1 : min(idx+1+context_window, len(para))] # after
+                                char_contexts_canon[pairing][c][context_window][fic_id] = fic_contexts[context_window]
+
+
 def extract_character_local_context(params):
     fname = params[0]
     pairings = params[1]
@@ -267,7 +302,6 @@ def extract_character_local_context(params):
         paras = [p.split() for p in f.read().splitlines()]
         paras_present = []
 
-        #for c in chars:
         for pairing in pairings:
 
             fic_pairing_count = 0
@@ -333,17 +367,19 @@ def main():
         ('harry', 'ron'),
     ]
 
-    vector_combination = 'ngrams1' # {'add', 'context_only', 'ngrams1'}
-    input_type = 'quote' # {'assertion', 'quote', 'paragraph'}
-    context = 'all' # {'local', 'all'}
-    extract_contexts = True
-    nonames = True # remove names and pronouns from consideration
-    fic_pairing_paragraph_threshold = 5
-    #context_windows = [5, 10, 25, 50] # before and after, so total window is this value * 2
+    extract_contexts_fanfic = False
+    extract_contexts_canon = False
+    vector_combination = 'context_only' # {'add', 'context_only', 'ngrams1'}
+    input_type = 'assertion' # {'assertion', 'quote', 'paragraph'}
+    context = 'local' # {'local', 'all'}
     context_windows = [10] # before and after, so total window is this value * 2
-    mt_align = False
+    mt_align = True
+    canon = True
+    embeddings = 'fanfic' # {'background', 'fanfic', 'combined'}
     #save_paras_fpath = '/usr0/home/mamille2/erebor/fanfiction-project/data/ao3/harrypotter/pairings/{}/{}_paras.txt' # None for not saving this
     save_paras_fpath = None
+    nonames = True # remove names and pronouns from consideration
+    fic_pairing_paragraph_threshold = 5
 
     if nonames:
 
@@ -359,64 +395,61 @@ def main():
 
         stopwords = nltk.corpus.stopwords.words('english') + char_names + pronouns
 
-    # TSNE settings
-    run_tsne = False
-    tsne_fic_ids_path = None # if None, then run TSNE on all fics
-    #tsne_fic_ids_path = '/usr0/home/mamille2/erebor/fanfiction-project/data/qian_sample1_fic_ids.csv' # if None, then run TSNE on all fics
-    tsne_char_embs_outpath = '/usr0/home/mamille2/erebor/fanfiction-project/output/tsne_chars_lc10_context.nptxt'
-    tsne_char_labels_outpath = '/usr0/home/mamille2/erebor/fanfiction-project/output/tsne_chars_lc10_context_labels.txt'
-    tsne_fname_labels_outpath = '/usr0/home/mamille2/erebor/fanfiction-project/output/tsne_fnames_lc10_context.txt'
-    #plot_outpath = '/usr0/home/mamille2/erebor/fanfiction-project/output/tsne_chars_lc10_context_plot.png'
-
     # I/O
-    fanfic_embs_fpath = '/usr0/home/jfiacco/Research/fanfic/embeddings/fanfic.harry_potter.all.lower.model.vec'
-    #fanfic_embs_fpath = '/usr0/home/jfiacco/Research/fanfic/embeddings/background.lower.model.vec'
-    #canon_mt_embs_fpath = '/usr0/home/jfiacco/Research/fanfic/embeddings/canon.harry_potter.lower.model.vec'
+    if embeddings == 'fanfic':
+        fanfic_embs_fpath = '/usr0/home/jfiacco/Research/fanfic/embeddings/fanfic.harry_potter.all.lower.model.vec'
+    elif embeddings == 'background':
+        fanfic_embs_fpath = '/usr0/home/jfiacco/Research/fanfic/embeddings/background.lower.model.vec'
+    elif embeddings == 'combined':
+        fanfic_embs_fpath = '/usr0/home/jfiacco/Research/fanfic/embeddings/combined.harry_potter.all.lower.model.vec'
+    canon_embs_fpath = '/usr0/home/jfiacco/Research/fanfic/embeddings/canon.harry_potter.lower.model.vec'
     fanfic2bg_path = '/usr0/home/qinlans/ACL_2019/transformation_matrices/fanfic_to_background.harry_potter.mikolov.v2.nptxt'
-    #canon2bg_path = '/usr0/home/qinlans/ACL_2019/transformation_matrices/canon_to_background.harry_potter.mikolov.nptxt'
+    canon2bg_path = '/usr0/home/qinlans/ACL_2019/transformation_matrices/canon_to_background.harry_potter.mikolov.nptxt'
 
-    #fics_fpath = '/usr0/home/mamille2/erebor/fanfiction-project/data/ao3/harrypotter/fics_paras'
     if input_type == 'assertion':
         input_fpath = '/usr0/home/mamille2/erebor/fanfiction-project/data/ao3/harrypotter/emnlp_dataset_6k/output/assertion_extraction'
     elif input_type == 'quote':
         input_fpath = '/usr0/home/mamille2/erebor/fanfiction-project/data/ao3/harrypotter/emnlp_dataset_6k/output/quote_attribution'
 
+    canon_dirpath = '/usr0/home/jfiacco/Research/fanfic/canon_data/harry_potter_tokenized/'
+    canon_fname = 'harry_potter_all.tokenized.txt'
     char_contexts_outpath = '/usr0/home/mamille2/erebor/fanfiction-project/temp/char_contexts_{}_{}.pkl'
-    char_embs_outpath = '/usr0/home/mamille2/erebor/fanfiction-project/embeddings/char_vecs_{}_{}_{}.pkl'
+    char_embs_outpath = '/usr0/home/mamille2/erebor/fanfiction-project/embeddings/char_vecs_{}_{}_{}_{}_aligned.pkl'
+    char_embs_canon_outpath = '/usr0/home/mamille2/erebor/fanfiction-project/embeddings/char_vecs_canon_{}_aligned.pkl'
+    char_contexts_canon_outpath = '/usr0/home/mamille2/erebor/fanfiction-project/temp/char_contexts_canon.pkl'
     vectorizer_outpath = '/usr0/home/mamille2/erebor/fanfiction-project/temp/{}_vectorizer_{}.pkl'
 
-    # Load selected files for TSNE
-    if tsne_fic_ids_path is not None:
-        selected_fic_ids = pd.read_csv(tsne_fic_ids_path)['fic_id'].tolist()
 
     # Load embeddings
     if not vector_combination.startswith('ngrams'):
         print("Loading embeddings...")
         fanfic_embs = KeyedVectors.load_word2vec_format(fanfic_embs_fpath)
-        #fanfic_mt_embs = KeyedVectors.load_word2vec_format(fanfic_mt_embs_fpath)
-        #canon_mt_embs = KeyedVectors.load_word2vec_format(canon_mt_embs_fpath)
+        if mt_align:
+            canon_embs = KeyedVectors.load_word2vec_format(canon_embs_fpath)
 
         # ## Align embeddings to background space
         # Load transformation matrices
         if mt_align:
             fanfic2bg = np.loadtxt(fanfic2bg_path)
-            #canon2bg = np.loadtxt(canon2bg_path)
+            canon2bg = np.loadtxt(canon2bg_path)
 
-        char_vecs = {}
 
-        print("Calculating character embeddings (noncontextual)...")
-        for c in chars:
-            char_vecs[c] = {}
-            if mt_align:
-                char_vecs[c]['fanfic'] = np.matmul(fanfic2bg, fanfic_embs[c]) 
-                #char_vecs[c]['canon'] = np.matmul(canon2bg, canon_mt_embs[c]) 
-                #char_vecs[c]['dist_f-c'] = cosine(char_vecs[c]['fanfic'], char_vecs[c]['canon'])
+        if vector_combination != 'context_only':
 
-            else:
-                char_vecs[c]['fanfic'] = fanfic_embs[c]
+            char_vecs = {}
+            print("Calculating character embeddings (noncontextual)...")
+            for c in chars:
+                char_vecs[c] = {}
+                if mt_align:
+                    char_vecs[c]['fanfic'] = np.matmul(fanfic2bg, fanfic_embs[c]) 
+                    #char_vecs[c]['canon'] = np.matmul(canon2bg, canon_mt_embs[c]) 
+                    #char_vecs[c]['dist_f-c'] = cosine(char_vecs[c]['fanfic'], char_vecs[c]['canon'])
 
-    if extract_contexts: 
-        print("Extracting local context for characters...")
+                else:
+                    char_vecs[c]['fanfic'] = fanfic_embs[c]
+
+    if extract_contexts_fanfic: 
+        print("Extracting local fanfic context for characters...")
         manager = Manager()
         global char_contexts_fanfic
         char_contexts_fanfic = manager.dict()
@@ -476,6 +509,45 @@ def main():
         print("Loading extracted contexts...")
         with open(char_contexts_outpath.format(input_type, context), 'rb') as f:
             char_contexts_fanfic = pickle.load(f)
+
+    if extract_contexts_canon: 
+        print("Extracting local canon context for characters...")
+        manager = Manager()
+        global char_contexts_canon
+        char_contexts_canon = {}
+        for pairing in pairings:
+            char_contexts_canon[pairing] = {}
+
+            if context == 'local': # specific to characters, to context windows
+                for c in pairing:
+                    char_contexts_canon[pairing][c] = {}
+                    for cw in context_windows:
+                        char_contexts_canon[pairing][c][cw] = {}
+        
+        params = [canon_fname, 
+                        pairings,
+                        canon_dirpath,
+                        context_windows,
+                        fic_pairing_paragraph_threshold,
+                        chars,
+                        context,
+                ]
+
+        extract_character_local_context_canon(params)
+
+        # Save extracted contexts
+        with open(char_contexts_canon_outpath, 'wb') as f:
+            pickle.dump(char_contexts_canon, f)
+
+    else:
+        # Load extracted contexts
+        print("Loading extracted contexts...")
+        with open(char_contexts_outpath.format(input_type, context), 'rb') as f:
+            char_contexts_fanfic = pickle.load(f)
+        
+        if canon:
+            with open(char_contexts_canon_outpath, 'rb') as f:
+                char_contexts_canon = pickle.load(f)
         
     # Ngrams
     if vector_combination == 'ngrams1':
@@ -564,6 +636,32 @@ def main():
                         except ValueError as e:
                             del idf_weights_fanfic[pairing][c]
 
+        if mt_align:
+            # Build, store aligned fanfic vectors
+            fanfic_aligned = {}
+            print("Building aligned embeddings...")
+
+            for pairing in pairings:
+                for c in pairing:
+                    for context_window in context_windows:
+                        for fname, context_wds in char_contexts_fanfic[pairing][c][context_window].items():
+                            context_wds = set(context_wds)
+                            for w in context_wds:
+                                if not w in fanfic_aligned and w in fanfic_embs:
+                                    fanfic_aligned[w] = np.matmul(fanfic2bg, fanfic_embs[w])
+
+            # Build, store aligned canon vectors
+            canon_aligned = {}
+            for pairing in pairings:
+                for c in pairing:
+                    for context_window in context_windows:
+                        for fname, context_wds in char_contexts_canon[pairing][c][context_window].items():
+                            context_wds = set(context_wds)
+                            for w in context_wds:
+                                if not w in canon_aligned and w in canon_embs:
+                                    canon_aligned[w] = np.matmul(canon2bg, canon_embs[w])
+
+
         # Get contextualized fanfic vectors
         print("Building fanfic contextualized vectors...")
 
@@ -585,7 +683,11 @@ def main():
                                 continue
                             wd_indices, wd_weights = idf_weights_fanfic[pairing][c][cw]
 
-                            context_embs = [fanfic_embs[w] * wd_weights[wd_indices[w]] for w in context_wds if w in fanfic_embs and w in wd_indices]
+                            if mt_align:
+                                context_embs = [fanfic_aligned[w] * wd_weights[wd_indices[w]] for w in context_wds if w in fanfic_aligned and w in wd_indices]
+
+                            else:
+                                context_embs = [fanfic_embs[w] * wd_weights[wd_indices[w]] for w in context_wds if w in fanfic_embs and w in wd_indices]
 
                             if len(context_embs) == 0: continue
                             context_vec = np.mean(context_embs, axis=0)
@@ -621,9 +723,48 @@ def main():
 
                     char_vecs_per_fic[pairing][fname] = char_vec
 
+        if canon:
+            # Get contextualized fanfic vectors
+            print("Building canon character vectors...")
+
+            char_vecs_per_canon = {}
+            for pairing in pairings:
+                char_vecs_per_canon[pairing] = {}
+
+                if context == 'local':
+                    for c in pairing:
+                        char_vecs_per_canon[pairing][c] = {w: {} for w in context_windows}
+
+            for pairing in tqdm(pairings):
+                for c in pairing:
+                    for cw in context_windows:
+                        for fname, context_wds in char_contexts_canon[pairing][c][cw].items(): # for every fic, sorted
+
+                            if mt_align:
+                                context_embs = [canon_aligned[w] for w in context_wds if w in canon_aligned and not w in stopwords]
+    
+                            else:
+                                context_embs = [fanfic_embs[w] for w in context_wds if w in fanfic_embs and not w in stopwords]
+
+                            if len(context_embs) == 0: continue
+                            context_vec = np.mean(context_embs, axis=0)
+                            
+                            if vector_combination == 'context_only':
+                                char_vec = context_vec
+                            
+                            elif vector_combination == 'add':
+                                char_vec = np.add(char_vecs[c]['fanfic'], context_vec)
+
+                            if (not vector_combination.startswith('ngrams')) and (char_vec.shape != (100,)): continue # only context words found are not in vocabulary
+
+                            char_vecs_per_canon[pairing][c][cw][fname] = char_vec
 
     # Save embeddings
-    with open(char_embs_outpath.format(input_type, context, vector_combination), 'wb') as f:
+    with open(char_embs_outpath.format(input_type, context, vector_combination, embeddings), 'wb') as f:
         pickle.dump(char_vecs_per_fic, f)
+
+    if canon:
+        with open(char_embs_canon_outpath.format(embeddings), 'wb') as f:
+            pickle.dump(char_vecs_per_canon, f)
 
 if __name__ == '__main__': main()
