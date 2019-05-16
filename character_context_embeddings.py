@@ -349,13 +349,6 @@ def main():
         'ron',
         'ginny',
         'draco',
-#        'neville',
-#        'luna',
-#        'remus',
-#        'sirius',
-#        'severus',
-#        'james',
-#        'lily',
     ]
 
     pairings = [
@@ -370,12 +363,12 @@ def main():
     extract_contexts_fanfic = False
     extract_contexts_canon = False
     vector_combination = 'context_only' # {'add', 'context_only', 'ngrams1'}
-    input_type = 'assertion' # {'assertion', 'quote', 'paragraph'}
-    context = 'local' # {'local', 'all'}
+    input_type = 'quote' # {'assertion', 'quote', 'paragraph'}
+    context = 'all' # {'local', 'all'}
     context_windows = [10] # before and after, so total window is this value * 2
-    mt_align = True
+    mt_align = False
     canon = True
-    embeddings = 'fanfic' # {'background', 'fanfic', 'combined'}
+    embeddings = 'background' # {'background', 'fanfic', 'combined'}
     #save_paras_fpath = '/usr0/home/mamille2/erebor/fanfiction-project/data/ao3/harrypotter/pairings/{}/{}_paras.txt' # None for not saving this
     save_paras_fpath = None
     nonames = True # remove names and pronouns from consideration
@@ -414,8 +407,12 @@ def main():
     canon_dirpath = '/usr0/home/jfiacco/Research/fanfic/canon_data/harry_potter_tokenized/'
     canon_fname = 'harry_potter_all.tokenized.txt'
     char_contexts_outpath = '/usr0/home/mamille2/erebor/fanfiction-project/temp/char_contexts_{}_{}.pkl'
-    char_embs_outpath = '/usr0/home/mamille2/erebor/fanfiction-project/embeddings/char_vecs_{}_{}_{}_{}_aligned.pkl'
-    char_embs_canon_outpath = '/usr0/home/mamille2/erebor/fanfiction-project/embeddings/char_vecs_canon_{}_aligned.pkl'
+    if mt_align:
+        char_embs_outpath = '/usr0/home/mamille2/erebor/fanfiction-project/embeddings/char_vecs_{}_{}_{}_{}_aligned.pkl'
+        char_embs_canon_outpath = '/usr0/home/mamille2/erebor/fanfiction-project/embeddings/char_vecs_canon_{}_aligned.pkl'
+    else:
+        char_embs_outpath = '/usr0/home/mamille2/erebor/fanfiction-project/embeddings/char_vecs_{}_{}_{}_{}.pkl'
+        char_embs_canon_outpath = '/usr0/home/mamille2/erebor/fanfiction-project/embeddings/char_vecs_canon_{}.pkl'
     char_contexts_canon_outpath = '/usr0/home/mamille2/erebor/fanfiction-project/temp/char_contexts_canon.pkl'
     vectorizer_outpath = '/usr0/home/mamille2/erebor/fanfiction-project/temp/{}_vectorizer_{}.pkl'
 
@@ -636,6 +633,19 @@ def main():
                         except ValueError as e:
                             del idf_weights_fanfic[pairing][c]
 
+            elif context == 'all':
+                context_toks = [' '.join(toks) for toks in char_contexts_fanfic[pairing].values()]
+                if len(context_toks) == 0:
+                    continue
+                    
+                vectorizer = TfidfVectorizer(stop_words=stopwords)
+                try:
+                    vectorizer.fit(context_toks)
+                    idf_weights_fanfic[pairing] = (vectorizer.vocabulary_, vectorizer.idf_)
+                except ValueError as e:
+                    del idf_weights_fanfic[pairing][c]
+
+
         if mt_align:
             # Build, store aligned fanfic vectors
             fanfic_aligned = {}
@@ -708,7 +718,7 @@ def main():
                         continue
                     wd_indices, wd_weights = idf_weights_fanfic[pairing]
 
-                    #context_embs = [fanfic_embs[w] * wd_weights[wd_indices[w]] for w in context_wds if w in fanfic_embs and w in wd_indices]
+                    context_embs = [fanfic_embs[w] * wd_weights[wd_indices[w]] for w in context_wds if w in fanfic_embs and w in wd_indices]
 
                     if len(context_embs) == 0: continue
                     context_vec = np.mean(context_embs, axis=0)
