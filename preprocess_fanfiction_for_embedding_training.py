@@ -27,44 +27,44 @@ def preprocess_fic(fic_info):
         chap_fnames.append(f"{fic_id}_{i+1:04}.csv")
 
     #for fname in tqdm(os.listdir(fandom_dirpath)):
-    with open(output_fpath, 'w') as f:
         
-        #fic_text = ''
-        for fname in chap_fnames:
-            chap_text = ''
-            for para in pd.read_csv(os.path.join(fandom_dirpath, fname))['text'].tolist():
-                if isinstance(para, str):
-                    #fic_text += ' ' + para
-                    chap_text += ' ' + para
-                    fic_paras.append(para)
+    #fic_text = ''
+    for fname in chap_fnames:
+        #chap_text = ''
+        for para in pd.read_csv(os.path.join(fandom_dirpath, fname))['text'].tolist():
+            if isinstance(para, str):
+                #fic_text += ' ' + para
+                #chap_text += ' ' + para
+                fic_paras.append(para)
 
-            #doc = nlp(fic_text)
+        #doc = nlp(fic_text)
 
-            if tokenization == 'para':
-                for para in fic_paras:
-                    toks_str = ' '.join([tok.text for tok in nlp.tokenizer(para.lower())])
-                    f.write(f"{toks_str}\n")
+    with open(output_fpath, 'w') as f:
+        if tokenization == 'paras':
+            for para in fic_paras:
+                toks_str = ' '.join([tok.text for tok in nlp.tokenizer(para.lower())])
+                f.write(f"{toks_str}\n")
+        
+        elif tokenization == 'sents':
             
-            elif tokenization == 'sent':
-                
-                doc = nlp(chap_text)
-                # nltk
-                #for sent in sent_tokenize(chap_text):
-                #    toks_str = ' '.join([tok for tok in word_tokenize(sent)])
-                #    f.write(f"{toks_str}\n")
+            doc = nlp(chap_text)
+            # nltk
+            #for sent in sent_tokenize(chap_text):
+            #    toks_str = ' '.join([tok for tok in word_tokenize(sent)])
+            #    f.write(f"{toks_str}\n")
 
-                # spacy
-                for sent in doc.sents:
-                    toks_str = ' '.join([tok.text for tok in sent])
-                    f.write(f"{toks_str}\n")
+            # spacy
+            for sent in doc.sents:
+                toks_str = ' '.join([tok.text for tok in sent])
+                f.write(f"{toks_str}\n")
 
-            # 1 paragraph/line
-            #paras = [p for p in pd.read_csv(os.path.join(fandom_dirpath, fname))['text'].tolist() if isinstance(p, str)]
-            #fic_paras += paras
+        # 1 paragraph/line
+        #paras = [p for p in pd.read_csv(os.path.join(fandom_dirpath, fname))['text'].tolist() if isinstance(p, str)]
+        #fic_paras += paras
 
-            # 1 sentence/line
-            #paras = ' '.join([p for p in pd.read_csv(os.path.join(fandom_dirpath, fname))['text'].tolist() if isinstance(p, str)])
-            #doc = nlp(paras)
+        # 1 sentence/line
+        #paras = ' '.join([p for p in pd.read_csv(os.path.join(fandom_dirpath, fname))['text'].tolist() if isinstance(p, str)])
+        #doc = nlp(paras)
 
 
         # 1 para/line
@@ -83,7 +83,7 @@ def main():
     # Settings
     parser = argparse.ArgumentParser()
     parser.add_argument('fandom', nargs='?', help='Name of fandom. Separate multiple fandoms with commas (no spaces)')
-    parser.add_argument('tokenization', nargs='?', help='Sentence or paragraph written per line')
+    parser.add_argument('tokenization', nargs='?', help='Sentence or paragraph written per line (sents,paras)')
     parser.add_argument('n_jobs', nargs='?', help='Number of threads')
     args = parser.parse_args()
 
@@ -97,15 +97,16 @@ def main():
         fandom_dirpath = data_dirpath_template.format(fandom)
         metadata_fpath = '/usr2/scratch/fanfic/ao3_{}_text/stories.csv'
         #fic_metadata = '/usr0/home/prashang/DirectedStudy/ACL_preprocessing/stories_kudos50.csv'
-        output_dirpath = '/usr2/mamille2/fanfiction-project/data/ao3/{0}/fics_{1}s'
+        output_dirpath = '/usr2/mamille2/fanfiction-project/data/ao3/{0}/fics_{1}'
         fandom_out_dirpath = output_dirpath.format(fandom, tokenization)
         print(fandom)
         print(f'Will save to {fandom_out_dirpath}')
 
         #nlp = spacy.load('en', disable=['ner'])
-        global nlp = spacy.load('en', disable=['tagger', 'parser', 'ner']) # Slow to repeat this and pass it to preprocess_fic
+        global nlp 
+        nlp = spacy.load('en', disable=['tagger', 'parser', 'ner'])
 
-        if tokenization == 'sent':
+        if tokenization == 'sents':
             nlp.add_pipe(nlp.create_pipe('sentencizer'))
 
         if not os.path.exists(fandom_out_dirpath):
@@ -122,8 +123,9 @@ def main():
                     repeat(fandom_dirpath), 
                     repeat(fandom_out_dirpath),
                     repeat(tokenization),
-                ))), total=len(fic_metadata)))
-            #for fid, chapter_count in tqdm(zip(fic_metadata['fic_id'], fic_metadata['chapter_count']), total=len(fic_metadata)):
+                ))), total=len(fic_metadata), ncols=50))
+        #for fid, chapter_count in tqdm(zip(fic_metadata['fic_id'], fic_metadata['chapter_count']), total=len(fic_metadata)):
+        #    preprocess_fic((fid, chapter_count, fandom_dirpath, fandom_out_dirpath, tokenization))
               
 if __name__ == '__main__':
     main()
