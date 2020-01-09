@@ -4,7 +4,7 @@ import pandas as pd
 import pdb
 from tqdm import tqdm
 import shutil
-from collections import Counter
+from collections import Counter, defaultdict
 import argparse
 import urllib.request
 import urllib.parse
@@ -71,21 +71,28 @@ def normalize_tags(metadata, metatags, input_tag_colname, normalized_tag_colname
     return metadata
 
 
-def initial_filter(metadata, lower_word_limit, upper_word_limit, fandom_dirpath):
+#def initial_filter(metadata, lower_word_limit, upper_word_limit, fandom_dirpath):
+def initial_filter(metadata, filters, fandom_dirpath):
 
-    filtered_metadata = metadata[(metadata['words'] >= lower_word_limit) & \
-                (metadata['words'] <= upper_word_limit) & \
-                (metadata['language'] == 'English')
-                #(metadata['additional tags'].map(lambda x: len(x) > 0))
-    ]
+    filtered_metadata = metadata
+
+    for col, cond in filters:
+        filter_str = f'filtered_metadata[filtered_metadata["{col}"]{cond}]'
+        filtered_metadata = eval(filter_str)
+
+#    filtered_metadata = metadata[(metadata['words'] >= lower_word_limit) & \
+#                (metadata['words'] <= upper_word_limit) & \
+#                (metadata['language'] == 'English')
+#                #(metadata['additional tags'].map(lambda x: len(x) > 0))
+#    ]
 
     # Check for any empty fics
-    for fic_id in filtered_metadata['fic_id']:
-        fname = f"{fic_id}.txt"
-
-        text_fpath = os.path.join(fandom_dirpath, f'fics_sents', fname)
-        if os.stat(text_fpath).st_size == 0:
-            filtered_metadata = filtered_metadata[filtered_metadata['fic_id'] != fic_id]
+#    for fic_id in filtered_metadata['fic_id']:
+#        fname = f"{fic_id}.txt"
+#
+#        text_fpath = os.path.join(fandom_dirpath, f'fics_sents', fname)
+#        if os.stat(text_fpath).st_size == 0:
+#            filtered_metadata = filtered_metadata[filtered_metadata['fic_id'] != fic_id]
 
 #        for tokenization in ['sent', 'para']:
 #            fold_out_dirpath = os.path.join(fandom_dirpath, f'filtered_{tokenization}s')
@@ -200,19 +207,65 @@ def save_metadata(metadata, out_dirpath):
         metadata.to_csv(fpath, index=False)
 
 
-def copy_fics(fic_ids, fandom_dirpath, out_dirpath):
-    for tokenization in ['sent', 'para']:
-        fics_out_dirpath = os.path.join(out_dirpath, f'filtered_{tokenization}s')
-        if not os.path.exists(fics_out_dirpath):
-            os.mkdir(fics_out_dirpath)
+def get_fic2chapter(fandom_dirpath):
+    """ Constructs a dictionary of chapter names for each fic id. """
 
-        for fic_id in fic_ids:
-            if tokenization == 'para':
-                fname = f"{fic_id}_tokenized_paras.txt"
-            else:
-                fname = f"{fic_id}.txt"
+    chap_names = os.listdir(fandom_dirpath)
+    fic2chapter = defaultdict(list)
 
-            shutil.copy(os.path.join(fandom_dirpath, f'fics_{tokenization}s', fname), os.path.join(fics_out_dirpath, f"{fic_id}.txt"))
+    for chapter in chap_names:
+        fic,_ = chapter.split('_')
+        fic2chapter[fic].append(chapter)
+
+    return fic2chapter
+
+
+def copy_fics(fic_ids, fic2chapter, fandom_dirpath, out_dirpath):
+    fics_out_dirpath = os.path.join(out_dirpath, 'fics')
+    if not os.path.exists(fics_out_dirpath):
+        os.mkdir(fics_out_dirpath)
+
+    problem_chars = [
+        "\u2028",
+        '\u0092',
+        '\u0093',
+        '\u0094',
+    ]
+
+    for fic_id in tqdm(fic_ids):
+        # Combine chapters into fics
+        fic_chapters = []
+
+        for chapter in fic2chapter[str(fic_id)]:
+            with open(os.path.join(fandom_dirpath, chapter)) as f:
+                data = f.read()
+                for char in problem_chars:
+                    data = data.replace(char, ' ')
+                        
+                fic_chapters.append('\n'.join(data.splitlines()[1:])) # Add all but first header line
+            
+        with open(os.path.join(fics_out_dirpath, f'{fic_id}.csv'), 'w') as f:
+            f.write('fic_id,chapter_id,para_id,text\n')
+            f.write('\n'.join(fic_chapters))
+
+
+def copy_fics_preprocessed(fic_ids, fandom_dirpath, out_dirpath):
+    fics_out_dirpath = os.path.join(out_dirpath, 'fics')
+
+    #for tokenization in ['sent', 'para']:
+    #    #fics_out_dirpath = os.path.join(out_dirpath, f'filtered_{tokenization}s')
+    #    if not os.path.exists(fics_out_dirpath):
+    #        os.mkdir(fics_out_dirpath)
+
+    for fic_id in fic_ids:
+        #if tokenization == 'para':
+        #    fname = f"{fic_id}_tokenized_paras.txt"
+        #else:
+        #    fname = f"{fic_id}.txt"
+
+        #shutil.copy(os.path.join(fandom_dirpath, f'fics_{tokenization}s', fname), os.path.join(fics_out_dirpath, f"{fic_id}.txt"))
+        shutil.copy(os.path.join(fandom_dirpath, f'fics_{tokenization}s', fname), os.path.join(fics_out_dirpath, f"{fic_id}.txt"))
+
 
 def sample_negatives(metadata, selected_tag_colname, sampling_strategy):
 
@@ -239,54 +292,73 @@ def sample_negatives(metadata, selected_tag_colname, sampling_strategy):
 def main():
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('fandom', nargs='?', help='Name of fandom')
+    parser.add_argument('fandoms', nargs='?', help='Names of fandom, comma-separated with no spaces added')
     parser.add_argument('dataset_name', nargs='?', help='Name of dataset')
     args = parser.parse_args()
 
     # Settings
-    fandom = args.fandom
+    fandoms = args.fandoms.split(',')
     dataset_name = args.dataset_name
-    upper_word_limit = 5000
+    upper_word_limit = 50000
     lower_word_limit = 1000
-    input_tag_colname = 'additional tags'
+    #input_tag_colname = 'additional tags'
+    filters = [
+        ('words', f'>={lower_word_limit}'),
+        ('words', f'<={upper_word_limit}'),
+        ('language', f'== "English"'),
+        ('status', f'== "Completed"'),
+    ]
 
-    # I/O
-    metadata_fpath = f'/usr2/scratch/fanfic/ao3_{fandom}_text/stories.csv'
-    fandom_dirpath = f'/usr2/mamille2/fanfiction-project/data/ao3/{fandom}/'
-    out_dirpath = os.path.join(fandom_dirpath, dataset_name)
-    if not os.path.exists(out_dirpath):
-        os.mkdir(out_dirpath)
+    for i,fandom in enumerate(fandoms):
 
-    # Load metadata
-    metadata = pd.read_csv(metadata_fpath)
+        print(f"{i+1}/{len(fandoms)} {fandom}")
 
-    print(fandom)
-    print(f'Found {len(metadata)} fics')
+        # I/O
+        metadata_fpath = f'/usr2/scratch/fanfic/ao3_{fandom}_text/stories.csv'
+        #fandom_dirpath = f'/usr2/mamille2/fanfiction-project/data/ao3/{fandom}/'
+        fandom_dirpath = f'/usr2/scratch/fanfic/ao3_{fandom}_text/stories'
+        out_dirpath = f'/data/fanfiction_ao3/{fandom}/{dataset_name}'
+        #out_dirpath = os.path.join(fandom_dirpath, dataset_name)
+        if not os.path.exists(out_dirpath):
+            os.makedirs(out_dirpath)
 
-    # Make sure tag colname has lists, not strings
-    if isinstance(metadata.iloc[0][input_tag_colname], str):
-        metadata[input_tag_colname] = metadata[input_tag_colname].map(lambda x: eval(x))
+        # Load metadata
+        print("Loading metadata...")
+        metadata = pd.read_csv(metadata_fpath)
 
-    # Filter and save
-    metadata, fic_ids = initial_filter(metadata, lower_word_limit, upper_word_limit, fandom_dirpath)
+        print(f'Found {len(metadata)} fics')
 
-    # Save metadata
-    print("Saving metadata...")
-    save_metadata(metadata, out_dirpath)
+        # Make sure tag colname has lists, not strings
+        #if isinstance(metadata.iloc[0][input_tag_colname], str):
+        #    metadata[input_tag_colname] = metadata[input_tag_colname].map(lambda x: eval(x))
 
-    # Copy fics
-    print("Copying fics...")
-    copy_fics(fic_ids, fandom_dirpath, out_dirpath)
+        # Filter and save
+        #metadata, fic_ids = initial_filter(metadata, lower_word_limit, upper_word_limit, fandom_dirpath)
+        metadata, fic_ids = initial_filter(metadata, filters, fandom_dirpath)
 
-    # Save dataset parameters, info
-    with open(os.path.join(out_dirpath, 'info.txt'), 'w') as f:
-        f.write(f'Lower word limit: {lower_word_limit}\n')
-        f.write(f'Upper word limit: {upper_word_limit}\n')
-        f.write(f'Language: English\n')
-        f.write(f'Total fics: {len(metadata)}\n')
-        f.write(f'Number of words: {metadata["words"].sum()}')
+        # Save metadata
+        print("Saving metadata...")
+        save_metadata(metadata, out_dirpath)
 
-    print(f'Total fics: {len(metadata)}\n')
+        # Combine chapters into fics
+        fic2chapter = get_fic2chapter(fandom_dirpath)
+
+        # Copy fics
+        print("Copying fics...")
+        copy_fics(fic_ids, fic2chapter, fandom_dirpath, out_dirpath)
+
+        # Save dataset parameters, info
+        with open(os.path.join(out_dirpath, 'info.txt'), 'w') as f:
+            f.write('Filters:\n')
+            for fil in filters:
+                f.write(''.join(fil))
+            #f.write(f'Lower word limit: {lower_word_limit}\n')
+            #f.write(f'Upper word limit: {upper_word_limit}\n')
+            f.write(f'Language: English\n')
+            f.write(f'Total fics: {len(metadata)}\n')
+            f.write(f'Number of words: {metadata["words"].sum()}')
+
+        print(f'Total fics: {len(metadata)}\n')
 
 if __name__ == '__main__':
     main()
