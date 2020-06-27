@@ -364,7 +364,7 @@ def main():
     extract_contexts_canon = False
     vector_combination = 'context_only' # {'add', 'context_only', 'ngrams1'}
     input_type = 'quote' # {'assertion', 'quote', 'paragraph'}
-    context = 'all' # {'local', 'all'}
+    context = 'all' # {'local', 'all'} I think is whether to restrict to context windows within assertions or quotes
     context_windows = [10] # before and after, so total window is this value * 2
     mt_align = False
     canon = True

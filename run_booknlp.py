@@ -1,13 +1,14 @@
 import os
 from subprocess import call
 
-input_dirpath = '/data/fanfiction_ao3/annotated_10fandom/dev/fics_text_tokenized/'
-booknlp_log_dirpath = 'data/output/annotated_10fandom_dev/'
-booknlp_output_dirpath = 'data/tokens/annotated_10fandom_dev/'
+#input_dirpath = '/data/fanfiction_ao3/annotated_10fandom/test/fics_text'
+input_dirpath = '/data/fanfiction_ao3/annotated_10fandom/test/fics_text_tokenized'
+booknlp_log_dirpath = 'data/output/annotated_10fandom_test/'
+booknlp_output_dirpath = 'data/tokens/annotated_10fandom_test/'
 
 # cmd = './runjava novels/BookNLP -doc /data/fanfiction_ao3/annotated_10fandom/dev/fics_text/allmarvel_1621415 -p data/output/annotated_10fandom_dev/allmarvel_1621415 -tok data/tokens/allmarvel_1621415.tokens -f'
 
-#booknlp_dirpath = '/usr0/home/mamille2/book-nlp/' # no whitespace tokenization
+#booknlp_dirpath = '/home/mamille2/book-nlp/' # no whitespace tokenization
 booknlp_dirpath = '/usr0/home/mamille2/book-nlp-whitespace-tok/' # whitespace tokenization
 os.chdir(booknlp_dirpath)
 
