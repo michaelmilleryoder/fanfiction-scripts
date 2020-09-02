@@ -4,10 +4,8 @@ import json
 import spacy
 nlp = spacy.load('en', disable=['ner'])
 
-def load_character_assertions(dataset_name):
-
-    pipeline_output_path = f'/data/fanfiction_gender_roles/harrypotter_ao3/{dataset_name}/output/'
-
+def load_character_assertions(fandom, dataset_name):
+    pipeline_output_path = f'/data/fanfiction_ao3/{fandom}/{dataset_name}/output_old/'
     char_assertions = {}
     assertions_dirpath = os.path.join(pipeline_output_path, 'assertion_extraction')
 
@@ -45,13 +43,13 @@ def normalize_names(text):
 def main():
     char_features = {}
 
+    fandom = 'supernatural'
     dataset_name = 'complete_en_1k-50k'
 
     # Load character assertions
-    char_assertions = load_character_assertions(dataset_name)
+    char_assertions = load_character_assertions(fandom, dataset_name)
     print(f"Assertions from {len(char_assertions)} files loaded.")
-
-    pipeline_output_path = f'/data/fanfiction_gender_roles/harrypotter_ao3/{dataset_name}/output/'
+    pipeline_output_path = f'/data/fanfiction_ao3/{fandom}/{dataset_name}/output_old/'
 
     output_dirpath = os.path.join(pipeline_output_path, 'char_features')
     if not os.path.exists(output_dirpath):
@@ -70,7 +68,6 @@ def main():
 
         for char in char_assertions[fic]:
             name = name_from_char(char)
-                
             assertions = ' '.join(char_assertions[fic][char])
             
             # Replace pronouns with coref'ed names

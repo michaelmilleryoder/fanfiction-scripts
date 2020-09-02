@@ -292,7 +292,7 @@ def sample_negatives(metadata, selected_tag_colname, sampling_strategy):
 def main():
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('fandoms', nargs='?', help='Names of fandom, comma-separated with no spaces added')
+    parser.add_argument('fandoms', nargs='?', help='Names of fandoms, comma-separated with no spaces added')
     parser.add_argument('dataset_name', nargs='?', help='Name of dataset')
     args = parser.parse_args()
 
@@ -323,10 +323,10 @@ def main():
             os.makedirs(out_dirpath)
 
         # Load metadata
-        print("Loading metadata...")
+        print("\tLoading metadata...")
         metadata = pd.read_csv(metadata_fpath)
 
-        print(f'Found {len(metadata)} fics')
+        print(f'\tFound {len(metadata)} fics')
 
         # Make sure tag colname has lists, not strings
         #if isinstance(metadata.iloc[0][input_tag_colname], str):
@@ -337,7 +337,7 @@ def main():
         metadata, fic_ids = initial_filter(metadata, filters, fandom_dirpath)
 
         # Save metadata
-        print("Saving metadata...")
+        print("\tSaving metadata...")
         save_metadata(metadata, out_dirpath)
 
         # Combine chapters into fics
@@ -358,7 +358,7 @@ def main():
             f.write(f'Total fics: {len(metadata)}\n')
             f.write(f'Number of words: {metadata["words"].sum()}')
 
-        print(f'Total fics: {len(metadata)}\n')
+        print(f'\tTotal fics: {len(metadata)}\n')
 
 if __name__ == '__main__':
     main()
