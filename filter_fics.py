@@ -232,6 +232,8 @@ def copy_fics(fic_ids, fic2chapter, fandom_dirpath, out_dirpath):
         '\u0094',
     ]
 
+    tqdm.write(f'\t{len(fic_ids)} fics found to copy')
+    tqdm.write(f'\t{len(os.listdir(fics_out_dirpath))} existing fics found')
     for fic_id in tqdm(fic_ids):
         # Combine chapters into fics
         fic_chapters = []
@@ -242,11 +244,15 @@ def copy_fics(fic_ids, fic2chapter, fandom_dirpath, out_dirpath):
                 for char in problem_chars:
                     data = data.replace(char, ' ')
                         
-                fic_chapters.append('\n'.join(data.splitlines()[1:])) # Add all but first header line
+                lines = data.splitlines()
+                header = lines[0]
+                fic_chapters.append('\n'.join(lines[1:])) # Add all but first header line
             
         with open(os.path.join(fics_out_dirpath, f'{fic_id}.csv'), 'w') as f:
-            f.write('fic_id,chapter_id,para_id,text\n')
+            f.write(header)
+            #f.write('fic_id,chapter_id,para_id,text\n')
             f.write('\n'.join(fic_chapters))
+    tqdm.write(f'\t{len(os.listdir(fics_out_dirpath))} total fics now')
 
 
 def copy_fics_preprocessed(fic_ids, fandom_dirpath, out_dirpath):
