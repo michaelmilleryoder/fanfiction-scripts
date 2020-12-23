@@ -6,8 +6,10 @@ from tqdm import tqdm
 import shutil
 from collections import Counter, defaultdict
 import argparse
+import itertools
 import urllib.request
 import urllib.parse
+from multiprocessing import Pool
 from bs4 import BeautifulSoup
 import re
 from sklearn.model_selection import train_test_split
@@ -220,10 +222,14 @@ def get_fic2chapter(fandom_dirpath):
     return fic2chapter
 
 
-def copy_fics(fic_ids, fic2chapter, fandom_dirpath, out_dirpath):
-    fics_out_dirpath = os.path.join(out_dirpath, 'fics')
-    if not os.path.exists(fics_out_dirpath):
-        os.mkdir(fics_out_dirpath)
+def copy_fic(tuple_args):
+    """ Combine scraped chapter files into a single fic, copy to output dir.
+        Takes a single argument of tuples for ease of use with map.
+    """
+    fic_id, fic2chapter, fandom_dirpath, fics_out_dirpath = tuple_args
+    # Combine chapters into fics
+    fic_chapters = []
+    header = None
 
     problem_chars = [
         "\u2028",
@@ -232,26 +238,57 @@ def copy_fics(fic_ids, fic2chapter, fandom_dirpath, out_dirpath):
         '\u0094',
     ]
 
+    # Combine chapter text data
+    if len(fic2chapter[str(fic_id)]) == 0: # fic data not present
+        return
+    for chapter in fic2chapter[str(fic_id)]:
+        with open(os.path.join(fandom_dirpath, chapter)) as f:
+            data = f.read()
+            for char in problem_chars:
+                data = data.replace(char, ' ')
+                    
+            lines = data.splitlines()
+            if header is None:
+                header = lines[0]
+            fic_chapters.append('\n'.join(lines[1:])) # Add all but first header line
+        
+    with open(os.path.join(fics_out_dirpath, f'{fic_id}.csv'), 'w') as f:
+        if header is None:
+            pdb.set_trace()
+        f.write(header)
+        #f.write('fic_id,chapter_id,para_id,text\n')
+        f.write('\n'.join(fic_chapters))
+
+
+def copy_fics(fic_ids, fic2chapter, fandom_dirpath, out_dirpath, num_cores=1):
+    """ Copy selected fics from source to processed directory.
+
+        Args:
+            num_cores: number of cores (>1 will do multiprocessing)
+     """
+    fics_out_dirpath = os.path.join(out_dirpath, 'fics')
+    if not os.path.exists(fics_out_dirpath):
+        os.mkdir(fics_out_dirpath)
+
     tqdm.write(f'\t{len(fic_ids)} fics found to copy')
     tqdm.write(f'\t{len(os.listdir(fics_out_dirpath))} existing fics found')
-    for fic_id in tqdm(fic_ids):
-        # Combine chapters into fics
-        fic_chapters = []
 
-        for chapter in fic2chapter[str(fic_id)]:
-            with open(os.path.join(fandom_dirpath, chapter)) as f:
-                data = f.read()
-                for char in problem_chars:
-                    data = data.replace(char, ' ')
-                        
-                lines = data.splitlines()
-                header = lines[0]
-                fic_chapters.append('\n'.join(lines[1:])) # Add all but first header line
-            
-        with open(os.path.join(fics_out_dirpath, f'{fic_id}.csv'), 'w') as f:
-            f.write(header)
-            #f.write('fic_id,chapter_id,para_id,text\n')
-            f.write('\n'.join(fic_chapters))
+    # Find out mismatch between fics in metadata and fics in the story dir
+    mismatches = set([str(fic_id) for fic_id in fic_ids]) - set(fic2chapter.keys())
+    print(f'\t{len(mismatches)} fics with metadata but no story data')
+
+    if num_cores > 2:
+        with Pool(num_cores) as p:
+            list(tqdm(p.imap(copy_fic, zip(
+                fic_ids,
+                itertools.repeat(fic2chapter),
+                itertools.repeat(fandom_dirpath),
+                itertools.repeat(fics_out_dirpath)
+                )), total=len(fic_ids), ncols=70))
+    else:
+        for fic_id in tqdm(fic_ids, ncols=70):
+            copy_fic((fic_id, fic2chapter, fandom_dirpath, fics_out_dirpath))
+
     tqdm.write(f'\t{len(os.listdir(fics_out_dirpath))} total fics now')
 
 

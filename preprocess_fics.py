@@ -3,16 +3,17 @@
     @date 2020
 """
 import argparse
+import os
 from multiprocessing import Pool
 import spacy
+import pdb
 import pandas as pd
+from tqdm import tqdm
 
 from filter_fics import get_fic2chapter, copy_fics as copy_stories
 
-
 print("Loading tokenizer...")
-nlp = spacy.load('en') # for the tokenization--not sure how to do this more cleanly
-
+NLP = spacy.load('en')
 
 class Preprocessor():
 
@@ -33,7 +34,7 @@ class Preprocessor():
         if update:
             # Load existing metadata
             existing_metadata = pd.read_csv(metadata_outpath)
-            self.metadata = pd.concat([existing_metadata, self.metadata]).drop_duplicates('fic_id', inplace=True)
+            self.metadata = pd.concat([existing_metadata, self.metadata]).drop_duplicates('fic_id')
         # Save out metadata
         self.metadata.to_csv(metadata_outpath)
 
@@ -42,41 +43,52 @@ class Preprocessor():
         fic2chapter = get_fic2chapter(self.scraped_fic_dirpath)
         if self.metadata is None:
             self.load_metadata()
-        copy_stories(self.metadata['fic_id'].tolist(), fic2chapter, self.scraped_fic_dirpath, self.out_dirpath)
+        fics_with_no_data = copy_stories(self.metadata['fic_id'].tolist(), fic2chapter, self.scraped_fic_dirpath, self.out_dirpath, num_cores=30)
+        pdb.set_trace()
+        self.metadata = self.metadata[~self.metadata['fic_id'].isin(fics_with_no_data)] # remove metadata for fics that don't have data
 
     def tokenize_fics(self, num_cores=-1):
-        """ Tokenize fics in input directory
+        """ Tokenize fics in output (copied) directory
             Args:
                 num_cores: # of cores (-1 for none)
         """
         
         print("Tokenizing fics...")
-        fic_fpaths = [os.path.join(self.scraped_fic_dirpath, fname) for fname in os.listdir(self.scraped_fic_dirpath)]
+        fic_fpaths = [os.path.join(self.fics_out_dirpath, fname) for fname in os.listdir(self.fics_out_dirpath)]
 
         if num_cores > 0:
-            with Pool(multiprocessing) as p:
+            with Pool(num_cores) as p:
                 list(tqdm(p.imap(tokenize_fic, fic_fpaths), total=len(fic_fpaths)))
 
         else:
             # without multiprocessing for debugging
-            list(map(tokenize_fics, fic_fpaths))
+            list(map(tokenize_fic, fic_fpaths))
 
     def load_metadata(self):
-        print("Loading metadata...")
+        print("\tLoading metadata...")
         self.metadata = pd.read_csv(os.path.join(self.scraped_dirpath, 'stories.csv'))
+        # Resolve bytestring issue (should be resolved with newer scrapes)
+        self.metadata = self.metadata.applymap(remove_bytestring)
 
     def combine_chapters(self):
         """ Combine chapters into one big CSV for a work/story """
 
     def preprocess(self):
-        self.tokenize_fics()
-        self.copy_metadata(update=self.update)
         self.copy_fics() # combines chapters into single fic CSVs
-        self.save_fics()
+        self.copy_metadata(update=self.update)
+        self.tokenize_fics(num_cores=15)
+
+
+def remove_bytestring(value):
+    new_value = value
+    if isinstance(value, str):
+        if value.startswith("b'") or value.startswith('b"'):
+            new_value = value[2:-1]
+    return new_value
 
 
 def tokenize(text):
-    return ' '.join([tok.text for tok in nlp.tokenizer(text)])
+    return ' '.join([tok.text for tok in NLP.tokenizer(text)])
 
 
 def tokenize_fic(fpath, force=False):
