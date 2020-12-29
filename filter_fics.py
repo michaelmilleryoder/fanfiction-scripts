@@ -15,6 +15,7 @@ import re
 from sklearn.model_selection import train_test_split
 import pdb
 
+
 """ Filter fics
     Save out filtered fic_ids, metadata and text
 """
@@ -255,16 +256,20 @@ def copy_fic(tuple_args):
     with open(os.path.join(fics_out_dirpath, f'{fic_id}.csv'), 'w') as f:
         if header is None:
             pdb.set_trace()
-        f.write(header)
+        f.write(f'{header}\n')
         #f.write('fic_id,chapter_id,para_id,text\n')
         f.write('\n'.join(fic_chapters))
 
 
 def copy_fics(fic_ids, fic2chapter, fandom_dirpath, out_dirpath, num_cores=1):
     """ Copy selected fics from source to processed directory.
-
+        Expects scraped data to have chapter files, which it combines into
+        full fic CSVs.
         Args:
-            num_cores: number of cores (>1 will do multiprocessing)
+            num_cores: number of cores (>1 will do multiprocessing).
+                Is slower with multiprocessing, though 
+                (perhaps because of joint access to fic2chapter?)
+        Returns fic IDs of stories with metadata but no story data.
      """
     fics_out_dirpath = os.path.join(out_dirpath, 'fics')
     if not os.path.exists(fics_out_dirpath):
@@ -277,7 +282,7 @@ def copy_fics(fic_ids, fic2chapter, fandom_dirpath, out_dirpath, num_cores=1):
     mismatches = set([str(fic_id) for fic_id in fic_ids]) - set(fic2chapter.keys())
     print(f'\t{len(mismatches)} fics with metadata but no story data')
 
-    if num_cores > 2:
+    if num_cores > 1:
         with Pool(num_cores) as p:
             list(tqdm(p.imap(copy_fic, zip(
                 fic_ids,
@@ -290,6 +295,7 @@ def copy_fics(fic_ids, fic2chapter, fandom_dirpath, out_dirpath, num_cores=1):
             copy_fic((fic_id, fic2chapter, fandom_dirpath, fics_out_dirpath))
 
     tqdm.write(f'\t{len(os.listdir(fics_out_dirpath))} total fics now')
+    return [int(fic_id) for fic_id in mismatches]
 
 
 def copy_fics_preprocessed(fic_ids, fandom_dirpath, out_dirpath):
@@ -351,6 +357,7 @@ def main():
         ('language', f'== "English"'),
         ('status', f'== "Completed"'),
     ]
+    num_cores = 1 # number of cores for copying fics
 
     for i,fandom in enumerate(fandoms):
 
@@ -388,18 +395,16 @@ def main():
 
         # Copy fics
         print("Copying fics...")
-        copy_fics(fic_ids, fic2chapter, fandom_dirpath, out_dirpath)
+        copy_fics(fic_ids, fic2chapter, fandom_dirpath, out_dirpath, num_cores=num_cores)
 
         # Save dataset parameters, info
         with open(os.path.join(out_dirpath, 'info.txt'), 'w') as f:
             f.write('Filters:\n')
             for fil in filters:
-                f.write(''.join(fil))
-            #f.write(f'Lower word limit: {lower_word_limit}\n')
-            #f.write(f'Upper word limit: {upper_word_limit}\n')
+                f.write(', '.join(fil))
             f.write(f'Language: English\n')
             f.write(f'Total fics: {len(metadata)}\n')
-            f.write(f'Number of words: {metadata["words"].sum()}')
+            f.write(f'Number of words: {int(metadata["words"].sum())}')
 
         print(f'\tTotal fics: {len(metadata)}\n')
 
