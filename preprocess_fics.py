@@ -22,7 +22,7 @@ NLP = spacy.load('en')
 
 class Preprocessor():
 
-    def __init__(self, scraped_dirpath, out_dirpath, update, merge_chapters):
+    def __init__(self, scraped_dirpath, out_dirpath, update, merge_chapters, num_workers):
         self.scraped_dirpath = scraped_dirpath
         self.scraped_fic_dirpath = os.path.join(self.scraped_dirpath, 'stories')
         self.out_dirpath = out_dirpath
@@ -30,6 +30,7 @@ class Preprocessor():
         self.update = update
         self.merge_chapters = merge_chapters
         self.metadata = None
+        self.num_workers = num_workers
 
     def copy_metadata(self, update=False):
         """ Copy fic metadata to output directory """
@@ -55,9 +56,9 @@ class Preprocessor():
             self.load_scraped_metadata()
         if merge_chapters:
             fic2chapter = get_fic2chapter(self.scraped_fic_dirpath)
-            fics_with_no_data = copy_stories(self.metadata['fic_id'].tolist(), fic2chapter, self.scraped_fic_dirpath, self.out_dirpath, num_cores=30)
+            fics_with_no_data = copy_stories(self.metadata['fic_id'].tolist(), fic2chapter, self.scraped_fic_dirpath, self.out_dirpath, num_cores=1)
         else:
-            fics_with_no_data = just_copy_fics(self.metadata['fic_id'].tolist(), self.scraped_fic_dirpath, self.fics_out_dirpath, num_cores=30)
+            fics_with_no_data = just_copy_fics(self.metadata['fic_id'].tolist(), self.scraped_fic_dirpath, self.fics_out_dirpath, num_cores=1)
         self.metadata = self.metadata[~self.metadata['fic_id'].isin(fics_with_no_data)] # remove metadata for fics that don't have data
 
     def tokenize_fics(self, num_cores=-1):
@@ -85,7 +86,7 @@ class Preprocessor():
     def preprocess(self):
         self.copy_fics(merge_chapters=self.merge_chapters)
         self.copy_metadata(update=self.update)
-        self.tokenize_fics(num_cores=20)
+        self.tokenize_fics(num_cores=self.num_workers)
         self.align_metadata_fics()
 
     def align_metadata_fics(self):
@@ -142,6 +143,12 @@ def copy_fic(tuple_args):
 
 
 def just_copy_fics(fic_list, input_dirpath, output_dirpath, num_cores=1):
+    """ Simply copy story files (fics) to output directory.
+        No merging of chapter files into story files.
+        Args:
+            num_cores: number of cores (>1 multiprocessing). However,
+                    doesn't appear to speed things up.
+    """
     fics_with_no_data = []
     fic_ids_to_write = []
     tqdm.write(f"\t{len(fic_list)} fics found to copy")
@@ -216,13 +223,14 @@ def get_args():
             help='Set this flag if the out_dirpath is an existing directory and you wish to update the fics already stored in it.')
     parser.add_argument('--merge-chapters', dest='merge_chapters', action='store_true', default=False,
             help='Set this flag if the scraped data is in chapters instead of whole fic CSVs.')
-
+    parser.add_argument('--num-workers', dest='num_workers', nargs='?', type=int, default=1,
+            help='Number of processes to run the tokenization at.')
     return parser.parse_args()
 
 
 def main():
     args = get_args()
-    processor = Preprocessor(args.scraped_dirpath, args.out_dirpath, args.update, args.merge_chapters)
+    processor = Preprocessor(args.scraped_dirpath, args.out_dirpath, args.update, args.merge_chapters, args.num_workers)
     processor.preprocess()
 
 
