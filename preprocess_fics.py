@@ -1,4 +1,4 @@
-""" A combination of utilities for preprocessing fanfiction scraped from AO3.
+""" Preprocess fanfiction scraped from AO3.
     @author Michael Miller Yoder <yoder@cs.cmu.edu>
     @date 2020
 """
@@ -15,6 +15,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from filter_fics import get_fic2chapter, copy_fics as copy_stories
+import preprocess_utils as utils
 
 print("Loading tokenizer...")
 NLP = spacy.load('en')
@@ -22,7 +23,7 @@ NLP = spacy.load('en')
 
 class Preprocessor():
 
-    def __init__(self, scraped_dirpath, out_dirpath, update, merge_chapters, num_workers):
+    def __init__(self, scraped_dirpath, out_dirpath, update, merge_chapters, num_copy_workers, num_tok_workers):
         self.scraped_dirpath = scraped_dirpath
         self.scraped_fic_dirpath = os.path.join(self.scraped_dirpath, 'stories')
         self.out_dirpath = out_dirpath
@@ -30,7 +31,8 @@ class Preprocessor():
         self.update = update
         self.merge_chapters = merge_chapters
         self.metadata = None
-        self.num_workers = num_workers
+        self.num_copy_workers = num_copy_workers
+        self.num_tok_workers = num_tok_workers
 
     def copy_metadata(self, update=False):
         """ Copy fic metadata to output directory """
@@ -40,25 +42,26 @@ class Preprocessor():
             self.load_scraped_metadata()
         if update:
             # Load existing metadata
-            existing_metadata = load_metadata_file(metadata_outpath)
+            existing_metadata = utils.load_metadata_file(metadata_outpath)
             self.metadata = pd.concat([existing_metadata, self.metadata]).drop_duplicates('fic_id').loc[:, self.metadata.columns] # remove any extra columns
         # Save out metadata
         self.metadata.to_csv(metadata_outpath, index=False)
 
-    def copy_fics(self, merge_chapters=False):
+    def copy_fics(self, merge_chapters=False, num_cores=1):
         """ Copy selected fics to output directory.
             Args:
                 merge_chapters: If True, merge chapter files in the input to output.
                         Set to False if the input is already in whole stories.
+                num_cores: number of cores to copy files. Default is 1.
         """
         print("Copying fics...")
         if self.metadata is None:
             self.load_scraped_metadata()
         if merge_chapters:
             fic2chapter = get_fic2chapter(self.scraped_fic_dirpath)
-            fics_with_no_data = copy_stories(self.metadata['fic_id'].tolist(), fic2chapter, self.scraped_fic_dirpath, self.out_dirpath, num_cores=1)
+            fics_with_no_data = copy_stories(self.metadata['fic_id'].tolist(), fic2chapter, self.scraped_fic_dirpath, self.out_dirpath, num_cores=num_cores)
         else:
-            fics_with_no_data = just_copy_fics(self.metadata['fic_id'].tolist(), self.scraped_fic_dirpath, self.fics_out_dirpath, num_cores=1)
+            fics_with_no_data = utils.just_copy_fics(self.metadata['fic_id'].tolist(), self.scraped_fic_dirpath, self.fics_out_dirpath, num_cores=num_cores)
         self.metadata = self.metadata[~self.metadata['fic_id'].isin(fics_with_no_data)] # remove metadata for fics that don't have data
 
     def tokenize_fics(self, num_cores=-1):
@@ -72,21 +75,21 @@ class Preprocessor():
 
         if num_cores > 0:
             with Pool(num_cores) as p:
-                list(tqdm(p.imap(tokenize_fic, fic_fpaths), total=len(fic_fpaths), ncols=70))
+                list(tqdm(p.imap(utils.tokenize_fic, fic_fpaths), total=len(fic_fpaths), ncols=70))
 
         else:
             # without multiprocessing for debugging
-            #list(map(tokenize_fic, tqdm(fic_fpaths, ncols=70)))
-            tokenize_fic(os.path.join(self.fics_out_dirpath, '22923991.csv'), force=True)
+            #list(map(utils.tokenize_fic, tqdm(fic_fpaths, ncols=70)))
+            utils.tokenize_fic(os.path.join(self.fics_out_dirpath, '22923991.csv'), force=True)
 
     def load_scraped_metadata(self):
         print("\tLoading metadata...")
-        self.metadata = load_metadata_file(os.path.join(self.scraped_dirpath, 'stories.csv'))
+        self.metadata = utils.load_metadata_file(os.path.join(self.scraped_dirpath, 'stories.csv'))
 
     def preprocess(self):
-        self.copy_fics(merge_chapters=self.merge_chapters)
+        self.copy_fics(merge_chapters=self.merge_chapters, num_cores=self.num_copy_workers)
         self.copy_metadata(update=self.update)
-        self.tokenize_fics(num_cores=self.num_workers)
+        self.tokenize_fics(num_cores=self.num_tok_workers)
         self.align_metadata_fics()
 
     def align_metadata_fics(self):
@@ -100,7 +103,7 @@ class Preprocessor():
         # Compare with metadata
         metadata_outpath = os.path.join(self.out_dirpath, 'metadata.csv')
         if self.metadata is None:
-            self.metadata = load_metadata_file(metadata_outpath)
+            self.metadata = utils.load_metadata_file(metadata_outpath)
         print(f'Number of fics with metadata: {len(self.metadata)}')
         
         # Any mismatches
@@ -124,95 +127,6 @@ class Preprocessor():
             f.write(f'\tTotal number of fics: {len(self.metadata)}')
 
 
-def load_metadata_file(fpath):
-    data = pd.read_csv(fpath)
-    # Resolve bytestring issue (should be resolved with newer scrapes)
-    data = data.applymap(remove_bytestring)
-    # Make sure fic_id is an int column
-    data['fic_id'] = data['fic_id'].astype(int)
-    # Remove duplications
-    data = data.drop_duplicates('fic_id')
-    return data
-
-
-def copy_fic(tuple_args):
-    fic_id, input_dirpath, output_dirpath = tuple_args
-    inpath = os.path.join(input_dirpath, f'{fic_id}.csv')
-    outpath = os.path.join(output_dirpath, f'{fic_id}.csv')
-    shutil.copy(inpath, outpath)
-
-
-def just_copy_fics(fic_list, input_dirpath, output_dirpath, num_cores=1):
-    """ Simply copy story files (fics) to output directory.
-        No merging of chapter files into story files.
-        Args:
-            num_cores: number of cores (>1 multiprocessing). However,
-                    doesn't appear to speed things up.
-    """
-    fics_with_no_data = []
-    fic_ids_to_write = []
-    tqdm.write(f"\t{len(fic_list)} fics found to copy")
-
-    # Find any missing data
-    for fic_id in fic_list:
-        inpath = os.path.join(input_dirpath, f'{fic_id}.csv')
-        if not os.path.exists(inpath):
-            fics_with_no_data.append(fic_id)
-        else:
-            fic_ids_to_write.append(fic_id)
-
-    # Multiprocessing
-    if num_cores > 2:
-        with Pool(num_cores) as p:
-            list(tqdm(p.imap(copy_fic, zip(
-                fic_ids_to_write,
-                itertools.repeat(input_dirpath),
-                itertools.repeat(output_dirpath)
-                )), total=len(fic_ids_to_write), ncols=70))
-    else:
-        for fic_id in tqdm(fic_list, ncols=70):
-            inpath = os.path.join(input_dirpath, f'{fic_id}.csv')
-            outpath = os.path.join(output_dirpath, f'{fic_id}.csv')
-            shutil.copy(inpath, outpath)
-
-    tqdm.write(f"\t{len(fics_with_no_data)} fics with metadata but no story data")
-
-    return fics_with_no_data
-
-
-def remove_bytestring(value):
-    """ Remove issues with b' or b" prepended to strings with unicode encoding
-        run with Python 3
-    """
-    new_value = value
-    if isinstance(value, str):
-        if value.startswith("b'") or value.startswith('b"'):
-            new_value = value[2:-1]
-    return new_value
-
-
-def tokenize(text):
-    if not isinstance(text, str):
-        return ""
-    else:
-        return ' '.join([tok.text for tok in NLP.tokenizer(text)]).strip()
-
-
-def tokenize_fic(fpath, force=True):
-    """ Tokenize a fic.
-        Args:
-            fpath: Path to a CSV file with fic data. The column "text" will be tokenized and a column "text_tokenized" added.
-            force: Whether to force new tokenization if the CSV already contains a "text_tokenized" column (default=False)
-    """
-    
-    fic = pd.read_csv(fpath)
-    fic = fic.applymap(remove_bytestring) # remove any bytestring issue
-    if 'text_tokenized' in fic.columns and not force:
-        return
-    fic['text_tokenized'] = fic['text'].map(tokenize)
-    fic.to_csv(fpath, index=False)
-
-
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('scraped_dirpath', nargs='?',
@@ -223,14 +137,16 @@ def get_args():
             help='Set this flag if the out_dirpath is an existing directory and you wish to update the fics already stored in it.')
     parser.add_argument('--merge-chapters', dest='merge_chapters', action='store_true', default=False,
             help='Set this flag if the scraped data is in chapters instead of whole fic CSVs.')
-    parser.add_argument('--num-workers', dest='num_workers', nargs='?', type=int, default=1,
-            help='Number of processes to run the tokenization at.')
+    parser.add_argument('--num-tok-workers', dest='num_tok_workers', nargs='?', type=int, default=1,
+            help='Number of processes to run the tokenization with.')
+    parser.add_argument('--num-copy-workers', dest='num_copy_workers', nargs='?', type=int, default=1,
+            help='Number of processes to copy files.')
     return parser.parse_args()
 
 
 def main():
     args = get_args()
-    processor = Preprocessor(args.scraped_dirpath, args.out_dirpath, args.update, args.merge_chapters, args.num_workers)
+    processor = Preprocessor(args.scraped_dirpath, args.out_dirpath, args.update, args.merge_chapters, args.num_copy_workers, args.num_tok_workers)
     processor.preprocess()
 
 
