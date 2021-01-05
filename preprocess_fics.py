@@ -10,15 +10,11 @@ import pdb
 import shutil
 import itertools
 
-import spacy
 import pandas as pd
 from tqdm import tqdm
 
 from filter_fics import get_fic2chapter, copy_fics as copy_stories
 import preprocess_utils as utils
-
-print("Loading tokenizer...")
-NLP = spacy.load('en')
 
 
 class Preprocessor():
@@ -64,7 +60,7 @@ class Preprocessor():
             fics_with_no_data = utils.just_copy_fics(self.metadata['fic_id'].tolist(), self.scraped_fic_dirpath, self.fics_out_dirpath, num_cores=num_cores)
         self.metadata = self.metadata[~self.metadata['fic_id'].isin(fics_with_no_data)] # remove metadata for fics that don't have data
 
-    def tokenize_fics(self, num_cores=-1):
+    def tokenize_fics(self, num_cores=1):
         """ Tokenize fics in output (copied) directory
             Args:
                 num_cores: # of cores (-1 for none)
@@ -73,14 +69,14 @@ class Preprocessor():
         print("Tokenizing fics...")
         fic_fpaths = [os.path.join(self.fics_out_dirpath, fname) for fname in os.listdir(self.fics_out_dirpath)]
 
-        if num_cores > 0:
+        if num_cores > 1:
             with Pool(num_cores) as p:
                 list(tqdm(p.imap(utils.tokenize_fic, fic_fpaths), total=len(fic_fpaths), ncols=70))
 
         else:
             # without multiprocessing for debugging
-            #list(map(utils.tokenize_fic, tqdm(fic_fpaths, ncols=70)))
-            utils.tokenize_fic(os.path.join(self.fics_out_dirpath, '22923991.csv'), force=True)
+            list(map(utils.tokenize_fic, tqdm(fic_fpaths, ncols=70)))
+            #utils.tokenize_fic(os.path.join(self.fics_out_dirpath, '22923991.csv'), force=True)
 
     def load_scraped_metadata(self):
         print("\tLoading metadata...")

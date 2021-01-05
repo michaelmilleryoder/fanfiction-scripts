@@ -2,6 +2,20 @@
     @author Michael Miller Yoder <yoder@cs.cmu.edu>
     @date 2021
 """
+import os
+from multiprocessing import Pool
+import shutil
+import itertools
+import pdb
+
+import pandas as pd
+from tqdm import tqdm
+import spacy
+
+
+print("Loading tokenizer...")
+NLP = spacy.load('en')
+
 
 def load_metadata_file(fpath):
     data = pd.read_csv(fpath)
@@ -42,7 +56,7 @@ def just_copy_fics(fic_list, input_dirpath, output_dirpath, num_cores=1):
             fic_ids_to_write.append(fic_id)
 
     # Multiprocessing
-    if num_cores > 2:
+    if num_cores > 1:
         with Pool(num_cores) as p:
             list(tqdm(p.imap(copy_fic, zip(
                 fic_ids_to_write,
