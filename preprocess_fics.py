@@ -24,6 +24,8 @@ class Preprocessor():
         self.scraped_fic_dirpath = os.path.join(self.scraped_dirpath, 'stories')
         self.out_dirpath = out_dirpath
         self.fics_out_dirpath = os.path.join(self.out_dirpath, 'fics')
+        if not os.path.exists(self.fics_out_dirpath):
+            os.makedirs(self.fics_out_dirpath)
         self.update = update
         self.merge_chapters = merge_chapters
         self.metadata = None
