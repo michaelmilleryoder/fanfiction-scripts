@@ -78,7 +78,6 @@ class Preprocessor():
         else:
             # without multiprocessing for debugging
             list(map(utils.tokenize_fic, tqdm(fic_fpaths, ncols=70)))
-            #utils.tokenize_fic(os.path.join(self.fics_out_dirpath, '22923991.csv'), force=True)
 
     def load_scraped_metadata(self):
         print("\tLoading metadata...")
