@@ -5,7 +5,7 @@ num_topics <- 20
 max_iters <- 50
 do_stem <- TRUE
 min_df <- 100 # minimum document frequency for words
-covariates <- 'days'
+covariates <- 'day'
 
 cat('Loading data...\n')
 data <- read.csv('/data/news/now2010-2021/lgbtq/articles.csv')
@@ -29,6 +29,6 @@ estimated <- stm(documents = out$documents,
 				verbose=TRUE,
                 data = out$meta)
 
-cat('Saving model...\n')
 outpath <- sprintf('/projects/fanfiction_lgbtq/models/lgbtq_news_stm_%s_%dtopics_%dit_%dmindf.rds', covariates, num_topics, max_iters, min_df)
+cat(sprintf('Saved model to %s\n', outpath))
 saveRDS(estimated, outpath)
