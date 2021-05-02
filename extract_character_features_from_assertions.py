@@ -1,99 +1,154 @@
 import os
-from tqdm import tqdm
+import re
 import json
+from multiprocessing import Pool
+
+from tqdm import tqdm
 import spacy
+from spacy.tokenizer import Tokenizer
 nlp = spacy.load('en', disable=['ner'])
+nlp.tokenizer = Tokenizer(nlp.vocab, token_match=re.compile(r'\S+').match)
 
-def load_character_assertions(fandom, dataset_name):
-    pipeline_output_path = f'/data/fanfiction_ao3/{fandom}/{dataset_name}/output_old/'
-    char_assertions = {}
-    assertions_dirpath = os.path.join(pipeline_output_path, 'assertion_extraction')
 
-    # for fic, chars in tqdm(fic_chars.items()):
-    for fname in tqdm(os.listdir(assertions_dirpath), ncols=50):
-        fic_assertions_path = os.path.join(assertions_dirpath, fname)
-    #     if not os.path.exists(fic_assertions_path):
-    #         continue
-            
+class AssertionProcessor:
+    """ Process assertions in a fandom """
+
+    def __init__(self, pipeline_output_dirpath):
+        self.assertions_dirpath = os.path.join(pipeline_output_dirpath, 
+            'assertion_extraction')
+        self.coref_dirpath = os.path.join(pipeline_output_dirpath, 
+            'char_coref')
+        self.output_dirpath = os.path.join(pipeline_output_dirpath, 
+            'char_features')
+        if not os.path.exists(self.output_dirpath):
+            os.mkdir(self.output_dirpath)
+        self.stops = ['was', 'were', 'to', 'for', 'in', 'on', 'by', 'has', 
+            'had', 'been', 'be', "'re", "'s"]
+
+    def load_character_assertions(self, fandom_fname):
+        """ Load character assertions for a fic """
+        fic_assertions_path = os.path.join(self.assertions_dirpath, 
+            fandom_fname + '.json')
         with open(fic_assertions_path) as f:
-            char_assertions[fname[:-5]] = json.load(f)
-            
-    return char_assertions
+            char_assertions = json.load(f)
+        return char_assertions
 
+    def load_coref(self, fandom_fname):
+        """ Load coref info for a fic, to identify character mentions """
+        coref_fpath = os.path.join(self.coref_dirpath, fandom_fname + '.json')
+        with open(coref_fpath) as f:
+            coref = json.load(f)
+        return coref
 
-def name_from_char(charname):
-    name = ' '.join([part for part in charname.split('_') if len(part) > 0 and part[0].isupper()])
-    if name.endswith(')'):
-        name = name[:-1]
-    return name
+    def extract_features(self, assertion, char, coref):
+        """ Extract desired features from a fic's assertion """
 
-
-def normalize_names(text):
-    text_split = text.split()
+        text = assertion['text']
+        
+        # postag and parse
+        annotated = nlp(text)
     
-    for i, word in enumerate(text_split):
-        if word.startswith('($_'):
-            name = name_from_char(word)
-            text_split[i-1] = name
-            text_split[i] = ''
+        # Get character mention locations
+        cluster_matches = [clus for clus in coref['clusters'] if clus.get(
+            'name', '') == char]
+        if len(cluster_matches) == 0:
+            return []
+        cluster = cluster_matches[0]
+        mention_inds = [list(range(m['position'][0], m['position'][1])) \
+            for m in cluster['mentions']] # token IDs of character in the text
+        mention_inds = [i for el in mention_inds for i in el]
 
-    return ' '.join(text_split)
+        # Verbs where character was the subject
+        offset = assertion['position'][0]
+        verbs_subj = [tok.head.text.lower() for tok in annotated if tok.i + offset \
+            in mention_inds and (tok.dep_=='nsubj' or tok.dep_=='agent')]
+
+        # Verbs where character was the object
+        verbs_obj = [tok.head.text.lower() for tok in annotated \
+            if tok.i + offset in mention_inds and \
+            (tok.dep_=='dobj' or tok.dep_=='nsubjpass' or \
+            tok.dep_=='dative' or tok.dep_=='pobj')]
+
+        # Adjectives that describe the character
+        adjs = [tok.text.lower() for tok in annotated if tok.head.i + offset in mention_inds and \
+                (tok.dep_=='amod' or tok.dep_=='appos' or tok.dep_=='nsubj' or tok.dep_=='nmod')] \
+            + [tok.text.lower() for tok in annotated if tok.dep_=='attr' and (tok.head.text=='is' or tok.head.text=='was') and \
+               any([c.i + offset in mention_inds for c in tok.head.children])]
+
+        # Remove stopwords
+        final_list = [w for w in verbs_subj + verbs_obj + adjs if not w in self.stops]
+        return final_list
+
+    def process_fic(self, fname):
+        """ Process assertions from an individual fic """
+        fandom_fname = fname.split('.')[0]
+        outpath = os.path.join(self.output_dirpath, f'{fandom_fname}.json')
+        char_assertions = self.load_character_assertions(fandom_fname)
+        coref = self.load_coref(fandom_fname)
+        char_features = {} 
+
+        # Check if already processed
+        if os.path.exists(outpath):
+            return
+
+        # Process
+        for char in char_assertions:
+            if not char in char_features:
+                char_features[char] = []
+            for assertion in char_assertions[char]:
+                assertion_features = self.extract_features(assertion, char, coref)
+                char_features[char].extend(assertion_features)
+
+        # Save out
+        with open(outpath, 'w') as f:
+            json.dump(char_features, f)
+
+    def process(self):
+        """ Process assertions to get character actions and attributes """
+
+        fnames = sorted(os.listdir(self.assertions_dirpath))
+
+        # Process assertions
+        with Pool(30) as p:
+            list(tqdm(p.imap(self.process_fic, fnames), total=len(fnames), ncols=70))
+
+        #list(map(self.process_fic, tqdm(sorted(os.listdir(self.assertions_dirpath)),
+        #    ncols=70)))
 
 
 def main():
-    char_features = {}
+    fandoms = [
+     'homestuck',
+     'startrek',
+     'dragonage',
+     'buffy',
+     'jojo',
+    'pokemon',
+     'danganronpa',
+    'glee',
+    'fire_emblem',
+    'hannibal',
+    'dcu',
+    'titan',
+    'harrypotter',
+    'percy_jackson',
+    'tolkien',
+     'naruto',
+     'teenwolf',
+     'song_ice_fire',
+     'shadowhunters',
+     'walking_dead'
+    ]
+    dataset_name = 'complete_en_1k-5k'
 
-    fandom = 'supernatural'
-    dataset_name = 'complete_en_1k-50k'
-
-    # Load character assertions
-    char_assertions = load_character_assertions(fandom, dataset_name)
-    print(f"Assertions from {len(char_assertions)} files loaded.")
-    pipeline_output_path = f'/data/fanfiction_ao3/{fandom}/{dataset_name}/output_old/'
-
-    output_dirpath = os.path.join(pipeline_output_path, 'char_features')
-    if not os.path.exists(output_dirpath):
-        os.mkdir(output_dirpath)
-
-    # Process assertions
-    # for fic in list(char_assertions.keys())[:1]:
-    for fic in tqdm(char_assertions, ncols=50):
-
-        # Check if already processed
-        if os.path.exists(os.path.join(output_dirpath, f'{fic}.json')):
+    for fandom in fandoms:
+        pipeline_output_path = f'/data/fanfiction_ao3/{fandom}/{dataset_name}/output/'
+        if not os.path.exists(pipeline_output_path):
+            print(f'Skipping {fandom}')
             continue
+        print(f'Processing {fandom}')
+        processor = AssertionProcessor(pipeline_output_path)
+        processor.process()
 
-        if not fic in char_features:
-            char_features[fic] = {}
-
-        for char in char_assertions[fic]:
-            name = name_from_char(char)
-            assertions = ' '.join(char_assertions[fic][char])
-            
-            # Replace pronouns with coref'ed names
-            assertions = normalize_names(assertions)
-            
-            # postag and parse
-            annotated = nlp(assertions)
-            
-            # Verbs where character was the subject
-            verbs_subj = [tok.head.text.lower() for tok in annotated if tok.text == name and (tok.dep_=='nsubj' or tok.dep_=='agent')]
-            verbs_subj
-            
-            # Verbs where character was the object
-            verbs_obj = [tok.head.text.lower() for tok in annotated if tok.text == name and (tok.dep_=='dobj' or tok.dep_=='nsubjpass' or tok.dep_=='dative' or tok.dep_=='pobj')]
-            
-            # Adjectives that describe the character
-            adjs = [tok.text.lower() for tok in annotated if tok.head.text == name and (tok.dep_=='amod' or tok.dep_=='appos' or tok.dep_=='nsubj' or tok.dep_=='nmod')] \
-            + [tok.text.lower() for tok in annotated if tok.dep_=='attr' and (tok.head.text=='is' or tok.head.text=='was') and name in [c.text for c in tok.head.children]]
-            
-            if not name in char_features[fic]:
-                char_features[fic][name] = []
-                
-            char_features[fic][name].extend(verbs_subj + verbs_obj + adjs)
-            
-        # Save out
-        with open(os.path.join(output_dirpath, f'{fic}.json'), 'w') as f:
-            json.dump(char_features[fic], f)
 
 if __name__ == '__main__': main()
