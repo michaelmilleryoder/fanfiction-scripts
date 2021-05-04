@@ -23,7 +23,7 @@ class AssertionProcessor:
         if not os.path.exists(self.output_dirpath):
             os.mkdir(self.output_dirpath)
         self.stops = ['was', 'were', 'to', 'for', 'in', 'on', 'by', 'has', 
-            'had', 'been', 'be', "'re", "'s"]
+            'had', 'been', 'be', "'re",'’re', "'s", "'m", 'at', 'of']
 
     def load_character_assertions(self, fandom_fname):
         """ Load character assertions for a fic """
@@ -143,7 +143,8 @@ def main():
 
     for fandom in fandoms:
         pipeline_output_path = f'/data/fanfiction_ao3/{fandom}/{dataset_name}/output/'
-        if not os.path.exists(pipeline_output_path):
+        if not os.path.exists(os.path.join(pipeline_output_path, 
+            'assertion_extraction')):
             print(f'Skipping {fandom}')
             continue
         print(f'Processing {fandom}')
