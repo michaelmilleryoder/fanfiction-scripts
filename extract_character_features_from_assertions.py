@@ -2,6 +2,7 @@ import os
 import re
 import json
 from multiprocessing import Pool
+import pdb
 
 from tqdm import tqdm
 import spacy
@@ -23,7 +24,8 @@ class AssertionProcessor:
         if not os.path.exists(self.output_dirpath):
             os.mkdir(self.output_dirpath)
         self.stops = ['was', 'were', 'to', 'for', 'in', 'on', 'by', 'has', 
-            'had', 'been', 'be', "'re",'’re', "'s", "'m", 'at', 'of']
+            'had', 'been', 'be', "'re",'’re', '’ll', "'ll", "'s", '’s', '’ve', "'ve",
+             "'m", '’m', "n't", 'n’t', 'at', 'of', 'a', 'an', 'i', 'you']
 
     def load_character_assertions(self, fandom_fname):
         """ Load character assertions for a fic """
@@ -70,9 +72,11 @@ class AssertionProcessor:
             tok.dep_=='dative' or tok.dep_=='pobj')]
 
         # Adjectives that describe the character
-        adjs = [tok.text.lower() for tok in annotated if tok.head.i + offset in mention_inds and \
-                (tok.dep_=='amod' or tok.dep_=='appos' or tok.dep_=='nsubj' or tok.dep_=='nmod')] \
-            + [tok.text.lower() for tok in annotated if tok.dep_=='attr' and (tok.head.text=='is' or tok.head.text=='was') and \
+        adjs = [tok.text.lower() for tok in annotated if tok.head.i + offset in \
+            mention_inds and (tok.dep_=='amod' or tok.dep_=='appos' or \
+            tok.dep_=='nsubj' or tok.dep_=='nmod')] \
+            + [tok.text.lower() for tok in annotated if tok.dep_=='attr' and \
+                (tok.head.text=='is' or tok.head.text=='was') and \
                any([c.i + offset in mention_inds for c in tok.head.children])]
 
         # Remove stopwords
@@ -112,6 +116,7 @@ class AssertionProcessor:
         with Pool(30) as p:
             list(tqdm(p.imap(self.process_fic, fnames), total=len(fnames), ncols=70))
 
+        # for debugging
         #list(map(self.process_fic, tqdm(sorted(os.listdir(self.assertions_dirpath)),
         #    ncols=70)))
 
